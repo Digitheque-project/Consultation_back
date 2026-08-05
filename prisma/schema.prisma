@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Consultation {
+  id                         Int                             @id @default(autoincrement())
+  date                       DateTime
+  heure                      String
+  patientId                  String
+  medecinId                  String
+  statut                     String
+  urgence                    Boolean                         @default(false)
+  termine                    Boolean                         @default(false)
+  arriveeAccueil             Boolean                         @default(false)
+  arriveeAccueilAt           DateTime?
+  typeVisite                 String                          @default("INITIAL")
+  ordreControle              Int?
+  consultationParenteId      Int?
+  estReport                  Boolean                         @default(false)
+  chuSource                  String?
+  serviceSource              String?
+  createdAt                  DateTime                        @default(now())
+  updatedAt                  DateTime                        @updatedAt
+  motif                      String?
+  consultationParente        Consultation?                   @relation("ConsultationControle", fields: [consultationParenteId], references: [id])
+  consultationsControles     Consultation[]                  @relation("ConsultationControle")
+  observation                ObservationMedicale?
+  parametresCliniques        ParametreClinique[]
+  nonMedicamentPrescriptions PrescriptionNonMedicamenteuse[]
+
+  @@index([consultationParenteId])
+  @@map("consultation")
+}
+
+model ObservationMedicale {
+  id                  Int          @id @default(autoincrement())
+  consultationId      Int          @unique
+  notes               String
+  diagnostic          String
+  diagnosticSuspicion String?
+  diagnosticRetenu    String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  noteControle        String?
+  consultation        Consultation @relation(fields: [consultationId], references: [id])
+
+  @@map("observation_medicale")
+}
+
+model ParametreClinique {
+  id             Int          @id @default(autoincrement())
+  consultationId Int
+  nom            String
+  valeur         String
+  unite          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  consultation   Consultation @relation(fields: [consultationId], references: [id])
+
+  @@map("parametre_clinique")
+}
+
+model PrescriptionNonMedicamenteuse {
+  id                     Int                    @id @default(autoincrement())
+  consultationId         Int
+  recommandationsNotes   String?
+  rdvMotif               String?
+  rdvNiveau              RDVNiveau?
+  rdvDate                DateTime?
+  examenService          String?
+  examenType             String?
+  examenPriorite         ExamPriorite?          @default(NORMALE)
+  hospitalisationMotif   String?
+  hospitalisationService String?
+  hospitalisationStatus  HospitalisationStatus? @default(EN_ATTENTE)
+  reponseStatus          String?                @default("EN_ATTENTE")
+  reponseDate            DateTime?
+  reponseNotes           String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  examenMotif            String?
+  consultation           Consultation           @relation(fields: [consultationId], references: [id])
+
+  @@map("prescription_non_medicamentaire")
+}
+
+model Planning {
+  id         Int      @id @default(autoincrement())
+  medecinId  String
+  date       DateTime
+  heureDebut String
+  heureFin   String
+  quota      Int      @default(1)
+  disponible Boolean  @default(true)
+  notes      String?
+  // Regroupe les occurrences generees ensemble pour un creneau recurrent
+  // (ex: Lun/Mer/Ven 8h-11h sur plusieurs semaines) - chaque occurrence
+  // reste une ligne independante, modifiable/supprimable sans toucher aux
+  // autres (pas de moteur RRULE, juste des lignes pre-generees).
+  seriesId   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([medecinId, date])
+  @@index([seriesId])
+  @@map("planning")
+}
+
+// Cache local en lecture seule pour l'affichage de la liste des médecins —
+// jamais de relation/clé étrangère dessus (aucune autre table n'en dépend).
+// Rafraîchi périodiquement depuis le service auth (source de vérité) ;
+// peut être vidé et reconstruit à tout moment sans perte fonctionnelle.
+model MedecinCache {
+  id         String   @id
+  nom        String
+  prenom     String
+  email      String
+  specialite String?
+  telephone  String?
+  role       String
+  updatedAt  DateTime @updatedAt
+
+  @@map("medecin_cache")
+}
+
+enum RDVNiveau {
+  NIVEAU_1
+  NIVEAU_2
+  NIVEAU_3
+  NIVEAU_4
+}
+
+enum ExamPriorite {
+  STAT
+  URGENTE
+  NORMALE
+}
+
+enum HospitalisationStatus {
+  EN_ATTENTE
+  VALIDE
+  REFUSE
+}

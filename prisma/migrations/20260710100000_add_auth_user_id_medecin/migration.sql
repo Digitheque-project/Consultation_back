@@ -1,0 +1,2 @@
+ALTER TABLE "medecin"
+ADD COLUMN "authUserId" TEXT UNIQUE;
