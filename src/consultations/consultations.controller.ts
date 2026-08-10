@@ -1,4 +1,4 @@
-﻿import { Controller, Get, Post, Body, Param, Req, UseGuards, Query, Sse, MessageEvent, ForbiddenException } from '@nestjs/common';
+﻿import { Controller, Get, Post, Body, Param, Req, UseGuards, Query, Sse, MessageEvent, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery, ApiPropertyOptional, ApiBearerAuth } from '@nestjs/swagger';
 import { IsDateString, IsOptional, IsString, IsUUID } from 'class-validator';
 import type { Request } from 'express';
@@ -372,18 +372,18 @@ export class ConsultationsController {
   @ApiOperation({
     summary: 'Lister tous les rendez-vous du CHU pour l\'accueil',
     description:
-      'Endpoint **public** utilisé par le service accueil pour consulter l\'ensemble des rendez-vous enregistrés dans le module consultation externe.\n\n' +
+      'Endpoint **public** (pas de garde de route) utilisé par le service accueil pour consulter l\'ensemble des rendez-vous enregistrés dans le module consultation externe — mais toujours authentifié : un en-tête `Authorization` valide est obligatoire.\n\n' +
       '**Accès :**\n' +
-      '- Avec un **JWT valide** (Bearer token) → accès direct, aucun paramètre supplémentaire requis.\n' +
-      '- Sans JWT (service accueil) → `?chuId=` requis et doit correspondre à `process.env.CHU_ID` côté serveur.\n\n' +
+      '- Avec un **JWT médecin** (Bearer token) → accès direct, scope automatique sur son CHU.\n' +
+      '- Avec le **token de service** (`SERVICE_API_TOKEN`, service accueil) → accès complet ; préciser `?chuId=` pour cibler un CHU précis, sinon le CHU de ce déploiement est utilisé par défaut.\n\n' +
       '**Paramètres :**\n' +
-      '- `chuId` (optionnel si JWT fourni) — identifiant du CHU pour les services sans token.\n' +
+      '- `chuId` (optionnel) — identifiant du CHU à consulter, pour un appel avec le token de service.\n' +
       '- `date` (optionnel) — filtrer sur une date précise (`YYYY-MM-DD`)\n' +
       '- `dateFrom` / `dateTo` (optionnel) — filtrer sur une plage de dates\n' +
       '- `archived` (optionnel, défaut `false`) — `true` pour voir les consultations terminées\n\n' +
-      '**Utilisation typique :** `GET /consultations/accueil/rendez-vous?chuId=1e5bbbb7-...&date=2026-07-14`',
+      '**Utilisation typique :** `GET /consultations/accueil/rendez-vous?date=2026-07-14` avec `Authorization: Bearer <SERVICE_API_TOKEN>`',
   })
-  @ApiQuery({ name: 'chuId', required: false, description: 'Identifiant du CHU — optionnel si un Bearer JWT contenant chuId est fourni', example: '1e5bbbb7-fa10-4d59-8848-2d0ce96a9394' })
+  @ApiQuery({ name: 'chuId', required: false, description: 'Identifiant du CHU à consulter (utile avec le token de service, qui couvre potentiellement plusieurs CHU) — ignoré/redondant avec un JWT médecin', example: '1e5bbbb7-fa10-4d59-8848-2d0ce96a9394' })
   @ApiQuery({ name: 'date', required: false, description: 'Filtrer sur une date précise (YYYY-MM-DD)', example: '2026-07-14' })
   @ApiQuery({ name: 'dateFrom', required: false, description: 'Date de début de plage (YYYY-MM-DD)' })
   @ApiQuery({ name: 'dateTo', required: false, description: 'Date de fin de plage (YYYY-MM-DD)' })
@@ -411,7 +411,7 @@ export class ConsultationsController {
       },
     },
   })
-  @ApiResponse({ status: 403, description: 'chuId invalide ou non autorisé.' })
+  @ApiResponse({ status: 401, description: 'Authorization manquant ou invalide.' })
   async getRendezVousAccueil(
     @Req() req: Request,
     @Query('chuId') chuIdParam?: string,
@@ -422,15 +422,13 @@ export class ConsultationsController {
   ) {
     const user = (req as any).user;
 
-    // Accès autorisé si :
-    // 1. JWT valide présent (médecin authentifié ou token de service)
-    // 2. OU le ?chuId= correspond à process.env.CHU_ID (service accueil sans JWT)
+    // Route déclarée @Public() (le garde ne bloque jamais l'accès) mais on exige
+    // ici un Authorization valide dans les deux cas acceptés : JWT médecin, ou
+    // token de service partagé (SERVICE_API_TOKEN, cf. jwt.guard.ts) — jamais un
+    // simple ?chuId= en clair comme preuve d'identité.
     const hasValidJwt = !!user?.userId || user?.role === 'SERVICE';
     if (!hasValidJwt) {
-      const expectedChuId = process.env.CHU_ID;
-      if (!expectedChuId || !chuIdParam || chuIdParam.trim() !== expectedChuId) {
-        throw new ForbiddenException('chuId invalide ou non autorisé pour ce service.');
-      }
+      throw new UnauthorizedException('Authorization requis (JWT médecin ou token de service).');
     }
 
     const archivedFilter = archived === 'true';
