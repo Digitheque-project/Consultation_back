@@ -1,4 +1,4 @@
-﻿import { Controller, Get, Post, Body, Param, Req, UseGuards, Query, Sse, MessageEvent, UnauthorizedException } from '@nestjs/common';
+﻿import { Controller, Get, Post, Body, Param, Req, UseGuards, Query, Sse, MessageEvent, UnauthorizedException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery, ApiPropertyOptional, ApiBearerAuth } from '@nestjs/swagger';
 import { IsDateString, IsOptional, IsString, IsUUID } from 'class-validator';
 import type { Request } from 'express';
@@ -38,6 +38,8 @@ class ReportConsultationDto {
 @ApiBearerAuth('access-token')
 @Controller('consultations')
 export class ConsultationsController {
+  private readonly logger = new Logger(ConsultationsController.name);
+
   constructor(private readonly consultationsService: ConsultationsService) {}
 
   /** Le service accueil (token de service) a une vue globale ; un m�decin connect� reste limit� � ses propres consultations. */
@@ -375,7 +377,8 @@ export class ConsultationsController {
       'Endpoint **public** (pas de garde de route) utilisé par le service accueil pour consulter l\'ensemble des rendez-vous enregistrés dans le module consultation externe — mais toujours authentifié : un en-tête `Authorization` valide est obligatoire.\n\n' +
       '**Accès :**\n' +
       '- Avec un **JWT médecin** (Bearer token) → accès direct, scope automatique sur son CHU.\n' +
-      '- Avec le **token de service** (`SERVICE_API_TOKEN`, service accueil) → accès complet ; préciser `?chuId=` pour cibler un CHU précis, sinon le CHU de ce déploiement est utilisé par défaut.\n\n' +
+      '- Avec le **token de service** (`SERVICE_API_TOKEN`, service accueil) → accès complet ; préciser `?chuId=` pour cibler un CHU précis, sinon le CHU de ce déploiement est utilisé par défaut.\n' +
+      '- ⚠️ **DÉPRÉCIÉ** — sans en-tête `Authorization`, l\'accès reste toléré si `?chuId=` correspond au CHU du déploiement. Ce repli existe uniquement pour ne pas casser le service accueil pendant sa migration et **sera supprimé** : passez à `Authorization: Bearer <SERVICE_API_TOKEN>`.\n\n' +
       '**Paramètres :**\n' +
       '- `chuId` (optionnel) — identifiant du CHU à consulter, pour un appel avec le token de service.\n' +
       '- `date` (optionnel) — filtrer sur une date précise (`YYYY-MM-DD`)\n' +
@@ -422,13 +425,31 @@ export class ConsultationsController {
   ) {
     const user = (req as any).user;
 
-    // Route déclarée @Public() (le garde ne bloque jamais l'accès) mais on exige
-    // ici un Authorization valide dans les deux cas acceptés : JWT médecin, ou
-    // token de service partagé (SERVICE_API_TOKEN, cf. jwt.guard.ts) — jamais un
-    // simple ?chuId= en clair comme preuve d'identité.
+    // Chemin nominal : Authorization valide (JWT médecin ou SERVICE_API_TOKEN,
+    // cf. jwt.guard.ts). C'est la seule preuve d'identité acceptable — un
+    // ?chuId= en clair n'en est pas une, n'importe qui peut le deviner.
     const hasValidJwt = !!user?.userId || user?.role === 'SERVICE';
+
     if (!hasValidJwt) {
-      throw new UnauthorizedException('Authorization requis (JWT médecin ou token de service).');
+      // ── Compatibilité transitoire (à retirer) ──────────────────────────
+      // L'ancien contrat autorisait l'accès sur simple correspondance de
+      // ?chuId= avec CHU_ID. Le service accueil l'utilise encore : couper
+      // net ferait tomber son écran rendez-vous le jour du déploiement.
+      // On le tolère donc en journalisant un avertissement, le temps que
+      // l'accueil passe à `Authorization: Bearer <SERVICE_API_TOKEN>`.
+      const expectedChuId = process.env.CHU_ID;
+      const legacyChuIdMatches =
+        !!expectedChuId && !!chuIdParam && chuIdParam.trim() === expectedChuId;
+
+      if (!legacyChuIdMatches) {
+        throw new UnauthorizedException('Authorization requis (JWT médecin ou token de service).');
+      }
+
+      this.logger.warn(
+        `[DEPRECIE] GET /consultations/accueil/rendez-vous appelé sans Authorization, ` +
+          `autorisé via ?chuId= (compatibilité). L'appelant doit migrer vers ` +
+          `"Authorization: Bearer <SERVICE_API_TOKEN>" — ce repli sera supprimé.`,
+      );
     }
 
     const archivedFilter = archived === 'true';

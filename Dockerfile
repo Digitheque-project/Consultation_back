@@ -71,4 +71,12 @@ RUN chmod +x ./docker-entrypoint.sh && chown -R nestjs:nestjs /app
 USER nestjs
 EXPOSE 3333
 
+# Sonde de santé : GET /health (route publique, sans token) vérifie aussi la
+# base — un conteneur démarré mais dont la base est injoignable ressort
+# "unhealthy" au lieu de passer pour sain. fetch() est natif en Node 20, donc
+# aucun paquet supplémentaire (curl/wget) à installer.
+# Adapter l'URL si API_PREFIX est changé (défaut : consultation/api).
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3333/consultation/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 ENTRYPOINT ["./docker-entrypoint.sh"]
