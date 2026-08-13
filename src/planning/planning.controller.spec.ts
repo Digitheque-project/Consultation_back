@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PlanningController } from './planning.controller';
 import { PlanningService } from './planning.service';
+import { AuthService } from '../auth/auth.service';
 
 describe('PlanningController', () => {
   let controller: PlanningController;
@@ -44,7 +45,15 @@ describe('PlanningController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PlanningController],
-      providers: [{ provide: PlanningService, useValue: planningService }],
+      providers: [
+        { provide: PlanningService, useValue: planningService },
+        // Le contrôleur est décoré @UseGuards(JwtGuard), et JwtGuard dépend de
+        // AuthService : sans ce doublon, Nest échoue à instancier le module de
+        // test avant même d'exécuter le moindre cas. Les tests appellent les
+        // méthodes du contrôleur directement, le garde n'est jamais exécuté —
+        // un doublon vide suffit donc à satisfaire l'injection.
+        { provide: AuthService, useValue: { validateToken: jest.fn() } },
+      ],
     }).compile();
 
     controller = module.get<PlanningController>(PlanningController);
