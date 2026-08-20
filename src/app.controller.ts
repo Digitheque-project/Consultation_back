@@ -7,6 +7,9 @@ import { PrismaService } from './prisma/prisma.service';
 @ApiTags('app')
 @Controller()
 export class AppController {
+  /** Doit rester inférieur au --timeout du HEALTHCHECK Docker (10 s). */
+  private static readonly HEALTH_TIMEOUT_MS = 5000;
+
   constructor(
     private readonly appService: AppService,
     private readonly prisma: PrismaService,
@@ -28,7 +31,17 @@ export class AppController {
   @ApiResponse({ status: 503, description: 'Base de données injoignable' })
   async health() {
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
+      // Délai borné : quand la base est injoignable, Prisma attend son propre
+      // délai de connexion (mesuré à plus de 90 s en production). Une sonde qui
+      // pend au lieu de répondre 503 est inexploitable — la supervision ne
+      // distingue plus « base morte » de « service figé », et le diagnostic à
+      // distance redevient impossible.
+      await Promise.race([
+        this.prisma.$queryRaw`SELECT 1`,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Délai de la sonde dépassé')), AppController.HEALTH_TIMEOUT_MS),
+        ),
+      ]);
       return { status: 'ok', database: 'up' };
     } catch {
       // Exception, pas un simple objet : un "statusCode" dans le corps

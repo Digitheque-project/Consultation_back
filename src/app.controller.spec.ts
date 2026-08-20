@@ -43,5 +43,20 @@ describe('AppController', () => {
         status: 503,
       });
     });
+
+    // Prisma n'échoue pas toujours vite : base injoignable, il attend son
+    // propre délai de connexion (>90 s constatés en production). Sans borne,
+    // la sonde pend et la supervision ne peut plus rien conclure.
+    it('lève une 503 sans attendre quand la base ne répond jamais', async () => {
+      jest.useFakeTimers();
+      prisma.$queryRaw.mockReturnValue(new Promise(() => {})); // ne se résout jamais
+
+      const promesse = appController.health();
+      const attendu = expect(promesse).rejects.toMatchObject({ status: 503 });
+      await jest.advanceTimersByTimeAsync(6000);
+      await attendu;
+
+      jest.useRealTimers();
+    });
   });
 });
