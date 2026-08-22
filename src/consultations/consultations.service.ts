@@ -294,8 +294,10 @@ export class ConsultationsService {
           },
           // Champ renommé côté clinique-back (serviceId -> serviceIdDest) — confirmé
           // en comparant leur Swagger en direct après des épisodes silencieusement
-          // rejetés (400 "property serviceId should not exist").
-          body: JSON.stringify({ patientId: consultation.patientId, serviceIdDest: serviceId, motifAdmission, createdBy }),
+          // rejetés (400 "property serviceId should not exist"). chuId manquait ici
+          // (present sur la branche "demande" juste en dessous, oublié sur celle-ci) —
+          // trouvé via un vrai test de bout en bout, clinique-back le rend obligatoire.
+          body: JSON.stringify({ patientId: consultation.patientId, serviceIdDest: serviceId, motifAdmission, createdBy, chuId: chuId || FALLBACK_CHU_ID }),
           signal: AbortSignal.timeout(8000),
         });
 
