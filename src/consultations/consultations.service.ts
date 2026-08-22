@@ -345,11 +345,12 @@ export class ConsultationsService {
     return 'EN_ATTENTE';
   }
 
-  private async notifyAccueil(payload: any, endpoint: string) {
+  private async notifyAccueil(payload: any, endpoint: string, token?: string) {
     const response = await fetch(`${ACCUEIL_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(payload),
     });
@@ -1042,7 +1043,7 @@ export class ConsultationsService {
         priorite: 'NORMALE',
         motif: data?.motif ?? data?.examenMotif ?? 'Examen demandé',
         createdBy: `consultation-${id}`,
-      }, '/accueil/triage/consultation-externe');
+      }, '/accueil/triage/consultation-externe', token);
 
       await this.prisma.consultation.update({
         where: { id },
