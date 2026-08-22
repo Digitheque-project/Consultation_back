@@ -6,7 +6,8 @@ import { CreateRecurringPlanningDto } from './dto/create-recurring-planning.dto'
 import { CreateUnavailabilityDto } from './dto/create-unavailability.dto';
 
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback codé en dur.
-const SERVICE_SERVICE_BASE_URL = process.env.SERVICE_SERVICE_BASE_URL as string;
+// Passe par la passerelle unique du CHU — voir GATEWAY_URL dans .env.example.
+const GATEWAY_URL = process.env.GATEWAY_URL as string;
 const AUTH_USER_SERVICE_URL = process.env.AUTH_USER_SERVICE_URL as string;
 const FALLBACK_CHU_ID = process.env.CHU_ID as string;
 const CLINICAL_SERVICES_CACHE_TTL_MS = 60_000;
@@ -35,7 +36,7 @@ export class PlanningService {
     }
 
     try {
-      const response = await fetch(`${SERVICE_SERVICE_BASE_URL}/services?chuId=${effectiveChuId}`, {
+      const response = await fetch(`${GATEWAY_URL}/services?chuId=${effectiveChuId}`, {
         signal: AbortSignal.timeout(15000),
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });

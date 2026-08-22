@@ -26,19 +26,24 @@ service distant est injoignable, la fonctionnalité listée se dégrade.
 | Variable | Service appelé | Routes utilisées | Conséquence si indisponible |
 |---|---|---|---|
 | `AUTH_USER_SERVICE_URL` | Authentification (utilisateurs) | `GET /users/{id}`, `GET /users?serviceId=…` | Connexion impossible si `JWT_SECRET` ne permet pas la validation locale ; liste des médecins vide |
-| `AUTH_SERVICE_URL` | Authentification (rôles) | `GET /roles` | Rôles non résolus sur la liste des médecins |
-| `ACCUEIL_BASE_URL` | Accueil | `GET /accueil/patients?chuId=…` | **Tous les patients affichés « Patient introuvable »** |
-| `CHU_SERVICE_BASE_URL` | CHU / prises en charge | `GET /prise-en-charge` | Informations d'assurance/prise en charge absentes |
-| `CLINIQUE_BASE_URL` | Clinique | `POST /clinique/demandes`, `POST /clinique/hospitalisations` | Envoi d'une demande d'hospitalisation en échec |
+| `GATEWAY_URL` | Passerelle unique du CHU — auth (rôles), CHU/prises en charge, registre des services, accueil, clinique | `GET /roles`, `GET /prise-en-charge`, `GET /services?chuId=…`, `GET /accueil/patients?chuId=…`, `POST /clinique/demandes`, `POST /clinique/hospitalisations` | Rôles non résolus, informations d'assurance absentes, liste des services cliniques vide, **tous les patients affichés « Patient introuvable »**, envoi d'une demande d'hospitalisation en échec — selon la route touchée |
 | `NOTIFICATION_URL` | Notifications | `POST /notifications/service` | Pas de notification temps réel (non bloquant) |
-| `SERVICE_SERVICE_BASE_URL` | Registre des services | `GET /services?chuId=…` | Liste des services cliniques vide (hospitalisation) |
 
-> **Important** : les appels vers l'accueil et le service CHU ont un délai
-> d'expiration de **8 secondes**. Si ces services sont hébergés dans le cloud
-> avec démarrage à froid (mesuré jusqu'à 43 s sur Render), l'enrichissement
-> patient échoue silencieusement. En réseau local (réponse < 1 s), aucun
-> problème. **Déployer ces services sur le même réseau que nous est fortement
-> recommandé.**
+> Une seule variable (`GATEWAY_URL`) pour cinq services distincts : ils
+> pointaient tous vers la même origine, donc une seule variable au lieu
+> d'une par service — la suspension d'un service individuel sur Render
+> n'oblige plus à changer une variable ici, seule la suspension de la
+> passerelle elle-même nous concernerait. En déploiement réseau local, faire
+> pointer `GATEWAY_URL` vers une instance de la passerelle joignable depuis
+> ce réseau (Render, ou une instance de la même passerelle déployée en
+> local) — voir le dépôt `gateway` (Digitheque-project/gateway).
+>
+> **Important** : les appels vers l'accueil et le CHU (via la passerelle) ont
+> un délai d'expiration de **8 secondes**. Si la passerelle ou les services
+> qu'elle proxifie sont hébergés dans le cloud avec démarrage à froid (mesuré
+> jusqu'à 43 s sur Render), l'enrichissement patient échoue silencieusement.
+> En réseau local (réponse < 1 s), aucun problème. **Déployer la passerelle
+> sur le même réseau que nous est fortement recommandé.**
 
 ### 1.2 Ce que les autres consomment chez nous (appels entrants)
 
@@ -83,7 +88,7 @@ services. Elles sont documentées dans le Swagger « services externes »
 ### 3.1 Variables d'environnement
 
 Toutes sont lues **au runtime** (`docker run -e` / `--env-file`), aucune n'est
-à passer au build. Le service **refuse de démarrer** si l'une des 13 variables
+à passer au build. Le service **refuse de démarrer** si l'une des 9 variables
 obligatoires manque (`src/config/assert-env.ts` affiche la liste exacte).
 
 **Règle : chaque URL ne contient que l'origine** (schéma + hôte + port), jamais
@@ -93,14 +98,10 @@ de chemin — le code ajoute les chemins lui-même.
 # Obligatoires
 DATABASE_URL=postgresql://user:motdepasse@postgres.chu.local:5432/consultation_externe
 JWT_SECRET=<secret de signature du service auth du CHU>
-SERVICE_API_TOKEN=<jeton partagé serveur-à-serveur>
-AUTH_SERVICE_URL=http://auth-service.chu.local
+SERVICE_API_TOKEN=<jeton partagé serveur-à-serveur — doit être identique côté passerelle>
+GATEWAY_URL=http://gateway.chu.local
 AUTH_USER_SERVICE_URL=http://auth-service.chu.local
-ACCUEIL_BASE_URL=http://accueil-back.chu.local
-CLINIQUE_BASE_URL=http://clinique-back.chu.local
-CHU_SERVICE_BASE_URL=http://chu-service.chu.local
 NOTIFICATION_URL=http://notification-back.chu.local
-SERVICE_SERVICE_BASE_URL=http://service-service.chu.local
 CHU_ID=<UUID du CHU>
 CONSULTATION_EXTERNE_SERVICE_ID=<UUID de ce service dans le registre>
 ACCUEIL_SERVICE_ID=<UUID du service accueil dans le registre>
@@ -254,11 +255,11 @@ période de fonctionnement partiel.
 | Symptôme | Cause probable | Vérification |
 |---|---|---|
 | Conteneur `unhealthy`, `/health` → 503 | Base injoignable | `DATABASE_URL`, état de PostgreSQL, logs du conteneur |
-| Tous les patients « Patient introuvable » | Accueil injoignable ou trop lent (> 8 s) | `curl $ACCUEIL_BASE_URL/accueil/patients?chuId=…` |
+| Tous les patients « Patient introuvable » | Passerelle (`GATEWAY_URL`) ou accueil injoignable, ou trop lent (> 8 s) | `curl -H "Authorization: Bearer <JWT>" $GATEWAY_URL/accueil/patients?chuId=…` |
 | Boucle de redirection vers la connexion | `NEXT_PUBLIC_AUTH_CLIENT_URL` erronée | Reconstruire le frontend avec la bonne origine |
 | `401` sur toutes les routes | `JWT_SECRET` différent de celui du service auth | Comparer avec la configuration du service auth |
 | Liste des médecins vide | `CONSULTATION_EXTERNE_SERVICE_ID` erroné | Comparer avec le registre service-service |
-| Services cliniques absents (hospitalisation) | `SERVICE_SERVICE_BASE_URL` ou `CHU_ID` erroné | `curl $SERVICE_SERVICE_BASE_URL/services?chuId=$CHU_ID` |
+| Services cliniques absents (hospitalisation) | `GATEWAY_URL` ou `CHU_ID` erroné | `curl -H "Authorization: Bearer <JWT>" $GATEWAY_URL/services?chuId=$CHU_ID` |
 | Accueil : écran rendez-vous vide | Migration `SERVICE_API_TOKEN` non faite côté accueil | Chercher `[DEPRECIE]` dans les logs backend |
 | Le conteneur ne démarre pas du tout | Variable d'environnement obligatoire manquante | Les logs listent nommément les variables absentes |
 

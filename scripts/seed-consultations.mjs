@@ -18,6 +18,11 @@ config({ path: resolve(__dirname, '../.env') });
 
 const prisma = new PrismaClient();
 
+// Script autonome (pas de session médecin connectée) : contrairement à
+// l'application, qui passe par GATEWAY_URL en transmettant le JWT du
+// médecin, ce script n'a aucun token à transmettre — l'accueil exige un
+// JWT sur la passerelle (requiresAuth), donc ce script reste en appel
+// direct au service accueil, avec sa propre variable indépendante de .env.
 const ACCUEIL_BASE_URL = process.env.ACCUEIL_BASE_URL ?? 'https://acceuil-back-production.up.railway.app';
 const CHU_ID          = process.env.CHU_ID          ?? '1e5bbbb7-fa10-4d59-8848-2d0ce96a9394';
 const DRY_RUN         = process.argv.includes('--dry-run');

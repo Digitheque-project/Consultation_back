@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback codé en dur.
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL as string;
+// Passe par la passerelle unique du CHU — voir GATEWAY_URL dans .env.example.
+const GATEWAY_URL = process.env.GATEWAY_URL as string;
 const AUTH_USER_SERVICE_URL = process.env.AUTH_USER_SERVICE_URL as string;
 const CONSULTATION_EXTERNE_SERVICE_ID = process.env.CONSULTATION_EXTERNE_SERVICE_ID as string;
 const SYNC_TTL_MS = 5 * 60 * 1000;
@@ -57,7 +58,7 @@ export class MedecinsService {
       const users: Array<{ id: string; name: string; firstname?: string; email: string; job?: string; telephone?: string; serviceRoles?: Array<{ roleId: string }> }> =
         Array.isArray(data) ? data : (data.users ?? []);
 
-      const rolesRes = await fetch(`${AUTH_SERVICE_URL}/roles`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
+      const rolesRes = await fetch(`${GATEWAY_URL}/roles`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
       const roles: Array<{ id: string; name: string }> = rolesRes.ok ? await rolesRes.json() : [];
       const adminRoleIds = new Set(roles.filter((r) => r.name?.toLowerCase() === 'admin').map((r) => r.id));
 

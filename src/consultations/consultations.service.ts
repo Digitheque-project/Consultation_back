@@ -6,11 +6,10 @@ import { CreateControleExterneDto } from './dto/create-controle-externe.dto';
 
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback
 // codé en dur ici — une URL obsolète silencieuse a déjà causé une perte de données.
-const ACCUEIL_BASE_URL = process.env.ACCUEIL_BASE_URL as string;
-const CLINIQUE_BASE_URL = process.env.CLINIQUE_BASE_URL as string;
-const CHU_SERVICE_BASE_URL = process.env.CHU_SERVICE_BASE_URL as string;
+// Accueil, clinique, CHU et services (registre) passent tous par la passerelle
+// unique du CHU — une seule variable au lieu d'une par service (cf. GATEWAY_URL).
+const GATEWAY_URL = process.env.GATEWAY_URL as string;
 const NOTIFICATION_URL = process.env.NOTIFICATION_URL as string;
-const SERVICE_SERVICE_BASE_URL = process.env.SERVICE_SERVICE_BASE_URL as string;
 const CONSULTATION_EXTERNE_SERVICE_ID = process.env.CONSULTATION_EXTERNE_SERVICE_ID as string;
 // Filet de secours pour les appels sans chuId dans le token (rôle SERVICE, tâches internes).
 // En usage normal, le chuId vient du JWT de l'utilisateur connecté — jamais d'une valeur figée.
@@ -62,7 +61,7 @@ export class ConsultationsService {
     try {
       // Le service accueil exige désormais le JWT du médecin connecté (même token
       // partagé que celui accepté par le service prescription).
-      const response = await fetch(`${ACCUEIL_BASE_URL}/accueil/patients?chuId=${effectiveChuId}`, {
+      const response = await fetch(`${GATEWAY_URL}/accueil/patients?chuId=${effectiveChuId}`, {
         signal: AbortSignal.timeout(8000),
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
@@ -90,7 +89,7 @@ export class ConsultationsService {
     }
 
     try {
-      const response = await fetch(`${CHU_SERVICE_BASE_URL}/prise-en-charge`, {
+      const response = await fetch(`${GATEWAY_URL}/prise-en-charge`, {
         signal: AbortSignal.timeout(8000),
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
@@ -120,7 +119,7 @@ export class ConsultationsService {
     }
 
     try {
-      const response = await fetch(`${SERVICE_SERVICE_BASE_URL}/services?chuId=${effectiveChuId}`, {
+      const response = await fetch(`${GATEWAY_URL}/services?chuId=${effectiveChuId}`, {
         signal: AbortSignal.timeout(15000),
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
@@ -286,7 +285,7 @@ export class ConsultationsService {
 
     if (callerServiceIds.has(serviceId)) {
       try {
-        const response = await fetch(`${CLINIQUE_BASE_URL}/clinique/hospitalisations`, {
+        const response = await fetch(`${GATEWAY_URL}/clinique/hospitalisations`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -316,7 +315,7 @@ export class ConsultationsService {
     }
 
     try {
-      const response = await fetch(`${CLINIQUE_BASE_URL}/clinique/demandes`, {
+      const response = await fetch(`${GATEWAY_URL}/clinique/demandes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -346,7 +345,7 @@ export class ConsultationsService {
   }
 
   private async notifyAccueil(payload: any, endpoint: string, token?: string) {
-    const response = await fetch(`${ACCUEIL_BASE_URL}${endpoint}`, {
+    const response = await fetch(`${GATEWAY_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
