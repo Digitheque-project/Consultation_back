@@ -8,7 +8,6 @@ import { CreateUnavailabilityDto } from './dto/create-unavailability.dto';
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback codé en dur.
 // Passe par la passerelle unique du CHU — voir GATEWAY_URL dans .env.example.
 const GATEWAY_URL = process.env.GATEWAY_URL as string;
-const AUTH_USER_SERVICE_URL = process.env.AUTH_USER_SERVICE_URL as string;
 const FALLBACK_CHU_ID = process.env.CHU_ID as string;
 const CLINICAL_SERVICES_CACHE_TTL_MS = 60_000;
 const SERVICE_DOCTORS_CACHE_TTL_MS = 60_000;
@@ -64,7 +63,7 @@ export class PlanningService {
 
     try {
       const response = await fetch(
-        `${AUTH_USER_SERVICE_URL}/users?search=&roleId=&serviceId=${serviceId}&isActive=true&page=1&limit=200`,
+        `${GATEWAY_URL}/users?search=&roleId=&serviceId=${serviceId}&isActive=true&page=1&limit=200`,
         { signal: AbortSignal.timeout(15000), headers: token ? { Authorization: `Bearer ${token}` } : undefined },
       );
       if (!response.ok) {

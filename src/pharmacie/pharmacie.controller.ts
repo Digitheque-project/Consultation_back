@@ -1,5 +1,6 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { PharmacieService } from './pharmacie.service';
 
 // Pas de @Public() : ce relais hérite du JwtGuard global (APP_GUARD), donc
@@ -10,6 +11,13 @@ import { PharmacieService } from './pharmacie.service';
 export class PharmacieController {
   constructor(private readonly pharmacieService: PharmacieService) {}
 
+  /** JWT brut de la requête entrante, transmis tel quel au service pharmacie (même token partagé). */
+  private getRawToken(req: Request): string | undefined {
+    const header = req.headers?.authorization;
+    if (!header?.startsWith('Bearer ')) return undefined;
+    return header.slice('Bearer '.length).trim() || undefined;
+  }
+
   @Get('articles/stock-sale-prices')
   @ApiOperation({
     summary: 'Catalogue pharmacie (stock + prix), relayé serveur-à-serveur',
@@ -18,7 +26,7 @@ export class PharmacieController {
   })
   @ApiQuery({ name: 'chuId', required: false, description: 'Identifiant du CHU' })
   @ApiResponse({ status: 200, description: 'Catalogue pharmacie (ou tableau vide si indisponible)' })
-  async getArticlesStockSalePrices(@Query('chuId') chuId?: string) {
-    return this.pharmacieService.getArticlesStockSalePrices(chuId);
+  async getArticlesStockSalePrices(@Query('chuId') chuId?: string, @Req() req?: Request) {
+    return this.pharmacieService.getArticlesStockSalePrices(chuId, req ? this.getRawToken(req) : undefined);
   }
 }

@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
-// Optionnelle comme PHARMACIE_URL (voir pharmacie.service.ts) : son absence
-// ne doit jamais empêcher le backend de démarrer.
-const PRESCRIPTION_URL = process.env.PRESCRIPTION_URL;
+// GATEWAY_URL est obligatoire au démarrage (voir config/assert-env.ts) — le
+// contrôle ci-dessous est un filet de sécurité TypeScript, jamais atteint en
+// pratique.
+const GATEWAY_URL = process.env.GATEWAY_URL;
 
 @Injectable()
 export class PrescriptionService {
@@ -18,15 +19,12 @@ export class PrescriptionService {
    * méthodes qui dupliqueraient chacune le contrat de l'API amont — rien à
    * maintenir en double si le service prescription ajoute une route.
    *
-   * Même raison que pour la pharmacie : le service prescription passe par la
-   * passerelle du CHU en 404 (bug de préfixe, ses routes ne portent aucun
-   * segment "/prescriptions" en interne pour la plupart), donc un appel
-   * direct depuis le navigateur reste la seule alternative — sauf qu'ici on
-   * profite de l'occasion pour consolider une variable d'environnement de
-   * plus derrière notre propre API.
+   * Passe par la passerelle unique du CHU (GATEWAY_URL) : le navigateur n'a
+   * de toute façon plus besoin de connaître l'URL du service prescription,
+   * seulement notre propre API.
    */
   async forward(req: Request, res: Response): Promise<void> {
-    if (!PRESCRIPTION_URL) {
+    if (!GATEWAY_URL) {
       res.status(503).json({ statusCode: 503, message: 'Service prescription non configuré.' });
       return;
     }
@@ -35,7 +33,7 @@ export class PrescriptionService {
     const path = Array.isArray(rawPath) ? rawPath.join('/') : (rawPath ?? '');
     const queryIndex = req.url.indexOf('?');
     const query = queryIndex >= 0 ? req.url.slice(queryIndex) : '';
-    const url = `${PRESCRIPTION_URL.replace(/\/+$/, '')}/${path}${query}`;
+    const url = `${GATEWAY_URL.replace(/\/+$/, '')}/${path}${query}`;
 
     const headers: Record<string, string> = {};
     const contentType = req.headers['content-type'];

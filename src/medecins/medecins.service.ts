@@ -4,7 +4,6 @@ import { PrismaService } from '../prisma/prisma.service';
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback codé en dur.
 // Passe par la passerelle unique du CHU — voir GATEWAY_URL dans .env.example.
 const GATEWAY_URL = process.env.GATEWAY_URL as string;
-const AUTH_USER_SERVICE_URL = process.env.AUTH_USER_SERVICE_URL as string;
 const CONSULTATION_EXTERNE_SERVICE_ID = process.env.CONSULTATION_EXTERNE_SERVICE_ID as string;
 const SYNC_TTL_MS = 5 * 60 * 1000;
 
@@ -49,7 +48,7 @@ export class MedecinsService {
       const res = await fetch(
         // isActive doit être explicite : une valeur vide fait filtrer sur les
         // comptes INACTIFS côté service auth et renvoie une liste vide.
-        `${AUTH_USER_SERVICE_URL}/users?search=&roleId=&serviceId=${CONSULTATION_EXTERNE_SERVICE_ID}&isActive=true&page=1&limit=200`,
+        `${GATEWAY_URL}/users?search=&roleId=&serviceId=${CONSULTATION_EXTERNE_SERVICE_ID}&isActive=true&page=1&limit=200`,
         { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(35000) },
       );
       if (!res.ok) return;

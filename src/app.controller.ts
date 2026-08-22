@@ -51,6 +51,30 @@ export class AppController {
     }
   }
 
+  /**
+   * Identité de ce déploiement, résolue dynamiquement au démarrage (voir
+   * config/resolve-identity.ts) — exposée pour que le frontend n'ait plus
+   * besoin de sa propre copie figée en NEXT_PUBLIC_CONSULTATION_EXTERNE_SERVICE_ID
+   * (même donnée dupliquée dans deux dépôts, même risque de désynchronisation
+   * qu'une URL codée en dur). Sans authentification : ce ne sont pas des
+   * données sensibles, juste l'identité publique de ce service dans le
+   * registre du CHU (déjà visible via GET /services sur la passerelle).
+   */
+  @Public()
+  @Get('identity')
+  @ApiOperation({
+    summary: 'Identité de ce déploiement (sans authentification)',
+    description:
+      "CHU_ID et CONSULTATION_EXTERNE_SERVICE_ID tels que résolus au démarrage depuis le registre service-service de la passerelle.",
+  })
+  @ApiResponse({ status: 200, description: 'Identité résolue' })
+  getIdentity() {
+    return {
+      chuId: process.env.CHU_ID,
+      consultationExterneServiceId: process.env.CONSULTATION_EXTERNE_SERVICE_ID,
+    };
+  }
+
   @Get()
   @ApiOperation({
     summary: 'Point d\'entrée de l\'API',

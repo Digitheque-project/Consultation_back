@@ -3,7 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback codé en dur.
-const AUTH_USER_SERVICE_URL = process.env.AUTH_USER_SERVICE_URL as string;
+// Passe par la passerelle unique du CHU — voir GATEWAY_URL dans .env.example.
+const GATEWAY_URL = process.env.GATEWAY_URL as string;
 const CONSULTATION_EXTERNE_SERVICE_ID = process.env.CONSULTATION_EXTERNE_SERVICE_ID as string;
 // Permet au personnel d'accueil (token perso, jamais un compte admin ou un
 // secret partagé) de gérer le planning des médecins — ils orchestrent
@@ -184,7 +185,7 @@ export class AuthService {
 
     // Fallback réseau : valider via le service utilisateur CHU
     try {
-      const response = await fetch(`${AUTH_USER_SERVICE_URL}/users/${decoded.userId}`, {
+      const response = await fetch(`${GATEWAY_URL}/users/${decoded.userId}`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(35000), // 35s pour survivre aux cold starts Render
       });

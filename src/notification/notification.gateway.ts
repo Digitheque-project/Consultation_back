@@ -7,7 +7,15 @@ import {
 import { io as connectUpstream, type Socket as UpstreamSocket } from 'socket.io-client';
 import type { Socket } from 'socket.io';
 
-const NOTIFICATION_URL = process.env.NOTIFICATION_URL;
+// GATEWAY_URL est obligatoire au démarrage (voir config/assert-env.ts) — le
+// contrôle ci-dessous est un filet de sécurité TypeScript, jamais atteint en
+// pratique. Note : la passerelle proxifie bien les requêtes d'upgrade
+// WebSocket vers /socket.io (voir gateway/src/config/services.registry.ts,
+// entrée Notification, ws:true), mais son contrôle JWT/SERVICE_API_TOKEN ne
+// s'applique PAS à cette voie (les upgrades ne passent jamais par la chaîne
+// de middlewares Express) — comportement inchangé par rapport à l'appel
+// direct precedent (déjà sans authentification au niveau de la connexion).
+const GATEWAY_URL = process.env.GATEWAY_URL;
 
 /**
  * Relais WebSocket temps réel vers le service notification.
@@ -33,14 +41,14 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   private readonly upstreamByClient = new Map<string, UpstreamSocket>();
 
   handleConnection(client: Socket) {
-    if (!NOTIFICATION_URL) {
-      this.logger.warn('NOTIFICATION_URL non configurée — relais WebSocket indisponible.');
+    if (!GATEWAY_URL) {
+      this.logger.warn('GATEWAY_URL non configurée — relais WebSocket indisponible.');
       client.disconnect(true);
       return;
     }
 
     const auth = (client.handshake.auth ?? {}) as { userId?: string; serviceId?: string };
-    const upstream = connectUpstream(`${NOTIFICATION_URL}/notifications`, {
+    const upstream = connectUpstream(`${GATEWAY_URL}/notifications`, {
       transports: ['websocket', 'polling'],
       auth: {
         ...(auth.userId ? { userId: auth.userId } : {}),

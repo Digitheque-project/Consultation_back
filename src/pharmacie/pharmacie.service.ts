@@ -1,11 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-// Variable validée au démarrage optionnelle (voir pharmacie.controller.ts) :
-// contrairement aux autres services externes, l'absence de PHARMACIE_URL ne
-// doit pas empêcher le backend de démarrer — le catalogue pharmacie reste une
-// fonctionnalité dégradable (le frontend traite déjà une liste vide comme
-// "indisponible", jamais comme une erreur bloquante).
-const PHARMACIE_URL = process.env.PHARMACIE_URL;
+// GATEWAY_URL est obligatoire au démarrage (voir config/assert-env.ts) — le
+// contrôle ci-dessous est un filet de sécurité TypeScript, jamais atteint en
+// pratique. Passe par la passerelle (requiresAuth sur /pharmacie, /articles),
+// donc transmet toujours le JWT du médecin connecté (voir controller).
+const GATEWAY_URL = process.env.GATEWAY_URL;
 
 @Injectable()
 export class PharmacieService {
@@ -25,9 +24,9 @@ export class PharmacieService {
    * service pharmacie du tout — un appel de plus consolidé derrière notre
    * propre API (elle-même déjà accessible via la passerelle du CHU).
    */
-  async getArticlesStockSalePrices(chuId?: string): Promise<unknown[]> {
-    if (!PHARMACIE_URL) {
-      this.logger.warn('PHARMACIE_URL non configurée — catalogue pharmacie indisponible.');
+  async getArticlesStockSalePrices(chuId?: string, token?: string): Promise<unknown[]> {
+    if (!GATEWAY_URL) {
+      this.logger.warn('GATEWAY_URL non configurée — catalogue pharmacie indisponible.');
       return [];
     }
 
@@ -35,8 +34,9 @@ export class PharmacieService {
     if (chuId) params.set('chuId', chuId);
 
     try {
-      const response = await fetch(`${PHARMACIE_URL}/articles/stock-sale-prices?${params.toString()}`, {
+      const response = await fetch(`${GATEWAY_URL}/articles/stock-sale-prices?${params.toString()}`, {
         signal: AbortSignal.timeout(15000),
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
       if (!response.ok) {

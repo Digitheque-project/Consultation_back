@@ -9,7 +9,8 @@ du CHU. Le service est composé de **deux dépôts distincts** :
 | Frontend (Next.js) | `Consultation_front` | `3000` |
 
 Ce document couvre les deux, ainsi que la carte des intégrations — le service
-consomme 7 services du CHU et est consommé par 2 autres.
+consomme les services du CHU au travers d'une passerelle unique et est
+consommé par 2 autres.
 
 ---
 
@@ -25,18 +26,20 @@ service distant est injoignable, la fonctionnalité listée se dégrade.
 
 | Variable | Service appelé | Routes utilisées | Conséquence si indisponible |
 |---|---|---|---|
-| `AUTH_USER_SERVICE_URL` | Authentification (utilisateurs) | `GET /users/{id}`, `GET /users?serviceId=…` | Connexion impossible si `JWT_SECRET` ne permet pas la validation locale ; liste des médecins vide |
-| `GATEWAY_URL` | Passerelle unique du CHU — auth (rôles), CHU/prises en charge, registre des services, accueil, clinique | `GET /roles`, `GET /prise-en-charge`, `GET /services?chuId=…`, `GET /accueil/patients?chuId=…`, `POST /clinique/demandes`, `POST /clinique/hospitalisations` | Rôles non résolus, informations d'assurance absentes, liste des services cliniques vide, **tous les patients affichés « Patient introuvable »**, envoi d'une demande d'hospitalisation en échec — selon la route touchée |
-| `NOTIFICATION_URL` | Notifications | `POST /notifications/service` | Pas de notification temps réel (non bloquant) |
+| `GATEWAY_URL` | Passerelle unique du CHU — auth (rôles), utilisateurs, CHU/prises en charge, registre des services, accueil, clinique, notification, pharmacie, prescription | `GET /roles`, `GET /users/{id}`, `GET /prise-en-charge`, `GET /services?chuId=…`, `GET /accueil/patients?chuId=…`, `POST /clinique/demandes`, `POST /clinique/hospitalisations`, `POST /notifications/service`, `GET /articles/stock-sale-prices`, `/prescriptions/*` | Rôles non résolus, connexion impossible si `JWT_SECRET` ne permet pas la validation locale, informations d'assurance absentes, liste des services cliniques vide, **tous les patients affichés « Patient introuvable »**, envoi d'une demande d'hospitalisation en échec, pas de notification temps réel, catalogue pharmacie ou prescriptions indisponibles — selon la route touchée |
 
-> Une seule variable (`GATEWAY_URL`) pour cinq services distincts : ils
+> **Une seule variable pour la quasi-totalité des services externes** : ils
 > pointaient tous vers la même origine, donc une seule variable au lieu
 > d'une par service — la suspension d'un service individuel sur Render
 > n'oblige plus à changer une variable ici, seule la suspension de la
 > passerelle elle-même nous concernerait. En déploiement réseau local, faire
 > pointer `GATEWAY_URL` vers une instance de la passerelle joignable depuis
 > ce réseau (Render, ou une instance de la même passerelle déployée en
-> local) — voir le dépôt `gateway` (Digitheque-project/gateway).
+> local) — voir le dépôt `gateway` (Digitheque-project/gateway). Les appels
+> sans JWT médecin en scope (notifyOurService, historique notification)
+> utilisent `SERVICE_API_TOKEN` à la place — **doit être configuré avec la
+> même valeur côté passerelle**, sans quoi ces appels précis échouent en 401
+> même si tout le reste fonctionne.
 >
 > **Important** : les appels vers l'accueil et le CHU (via la passerelle) ont
 > un délai d'expiration de **8 secondes**. Si la passerelle ou les services
@@ -88,7 +91,7 @@ services. Elles sont documentées dans le Swagger « services externes »
 ### 3.1 Variables d'environnement
 
 Toutes sont lues **au runtime** (`docker run -e` / `--env-file`), aucune n'est
-à passer au build. Le service **refuse de démarrer** si l'une des 9 variables
+à passer au build. Le service **refuse de démarrer** si l'une des 4 variables
 obligatoires manque (`src/config/assert-env.ts` affiche la liste exacte).
 
 **Règle : chaque URL ne contient que l'origine** (schéma + hôte + port), jamais
@@ -100,24 +103,32 @@ DATABASE_URL=postgresql://user:motdepasse@postgres.chu.local:5432/consultation_e
 JWT_SECRET=<secret de signature du service auth du CHU>
 SERVICE_API_TOKEN=<jeton partagé serveur-à-serveur — doit être identique côté passerelle>
 GATEWAY_URL=http://gateway.chu.local
-AUTH_USER_SERVICE_URL=http://auth-service.chu.local
-NOTIFICATION_URL=http://notification-back.chu.local
-CHU_ID=<UUID du CHU>
-CONSULTATION_EXTERNE_SERVICE_ID=<UUID de ce service dans le registre>
-ACCUEIL_SERVICE_ID=<UUID du service accueil dans le registre>
 
 # Optionnelles
 BACKEND_PORT=3333
 API_PREFIX=consultation/api
 MIGRATION_ATTEMPTS=10   # tentatives de migration au démarrage
 MIGRATION_DELAY=5       # secondes entre deux tentatives
+CHU_ID=<UUID du CHU — override manuel, voir ci-dessous>
+CONSULTATION_EXTERNE_SERVICE_ID=<UUID de ce service — override manuel>
+ACCUEIL_SERVICE_ID=<UUID du service accueil — override manuel>
 ```
 
 `CHU_ID`, `CONSULTATION_EXTERNE_SERVICE_ID` et `ACCUEIL_SERVICE_ID` sont
 l'**identité de ce déploiement** (« quel CHU / quel service suis-je »). Elles
-ne dupliquent pas une donnée du token utilisateur : les appels serveur-à-serveur
-n'ont aucun token à lire, et interroger le registre pour notre propre compte
-suppose de savoir qui nous sommes. Un déploiement = un CHU.
+ne sont **plus obligatoires** : au démarrage, `resolveIdentityEnvVars()`
+(`src/config/resolve-identity.ts`) les résout automatiquement via
+`GET /services` sur la passerelle, en retrouvant l'entrée nommée
+« Consultation externe » (→ notre id + son `chuId`) puis l'entrée « Accueil »
+du même CHU. Comme pour les variables manquantes, toute ambiguïté (0 ou
+plusieurs candidats) ou tout échec réseau fait échouer le démarrage
+**bruyamment**, jamais un choix silencieux ou un repli périmé — ce principe
+répond à un incident réel où une identité de déploiement erronée avait été
+utilisée silencieusement. Les renseigner ici manuellement reste possible : si
+les **trois** sont définies, la résolution automatique est court-circuitée
+(utile en environnement de test/CI sans accès à la passerelle, ou pour lever
+une ambiguïté que la résolution automatique a signalée). Un déploiement =
+un CHU.
 
 Voir `.env.example` pour la liste complète des noms.
 
@@ -189,10 +200,8 @@ Conséquence pratique : **changer une URL impose de reconstruire l'image.**
 
 ```bash
 docker build \
-  --build-arg NEXT_PUBLIC_CONSULTATION_EXTERNE_URL=http://consultation-back.chu.local:3333 \
-  --build-arg NEXT_PUBLIC_PRESCRIPTION_URL=http://prescription-back.chu.local \
-  --build-arg NEXT_PUBLIC_PHARMACIE_URL=http://pharmacie-back.chu.local \
-  --build-arg NEXT_PUBLIC_NOTIFICATION_URL=http://notification-back.chu.local \
+  --build-arg NEXT_PUBLIC_CONSULTATION_EXTERNE_URL=http://gateway.chu.local \
+  --build-arg NEXT_PUBLIC_DOSSIER_PATIENT_API_URL=http://gateway.chu.local \
   --build-arg NEXT_PUBLIC_AUTH_CLIENT_URL=http://auth-client.chu.local \
   --build-arg NEXT_PUBLIC_CONSULTATION_EXTERNE_SERVICE_ID=<UUID du service> \
   --build-arg NEXT_PUBLIC_CLINICAL_DEFAULT_SERVICE_ID=<UUID service clinique> \
@@ -207,8 +216,16 @@ docker run -d --name consultation-front \
 
 Rappels :
 - `NEXT_PUBLIC_CONSULTATION_EXTERNE_URL` : **origine seule**, sans
-  `/consultation/api` (le code ajoute le préfixe).
-- `NEXT_PUBLIC_AUTH_CLIENT_URL` : **origine seule**, sans `/login`.
+  `/consultation/api` (le code ajoute le préfixe) — pointe vers la passerelle
+  du CHU, plus directement vers `consultation-back` (qui reste, lui, joignable
+  en direct via la passerelle : entrée `Consultation` de son registre).
+- `NEXT_PUBLIC_DOSSIER_PATIENT_API_URL` : idem, origine de la passerelle.
+- `NEXT_PUBLIC_AUTH_CLIENT_URL` : **origine seule**, sans `/login` — ce n'est
+  pas une API du CHU (site de connexion SSO), reste hors passerelle.
+- `NEXT_PUBLIC_PRESCRIPTION_URL`, `NEXT_PUBLIC_PHARMACIE_URL`,
+  `NEXT_PUBLIC_NOTIFICATION_URL` : **supprimées** — ces trois services sont
+  désormais relayés par `consultation-back` (voir §1.1), le navigateur ne
+  les appelle plus jamais directement.
 - `NEXT_PUBLIC_API_URL` : concerne le backend **SIH/hospitalisation**, pas le
   nôtre — inutile pour un déploiement consultation externe seul.
 - `SERVICE_API_TOKEN` est la seule variable lue au **runtime** (routes serveur
@@ -239,10 +256,11 @@ C'est l'adresse `externe/docs` à communiquer aux équipes accueil et clinique.
 ## 6. Ordre de démarrage recommandé
 
 1. **PostgreSQL** — doit accepter les connexions
-2. **Service d'authentification** — sans lui, aucune connexion possible
-3. **Registre des services**, **accueil**, **CHU/prise en charge**
-4. **Backend consultation externe** — vérifier `/health` avant de continuer
-5. **Frontend consultation externe**
+2. **Passerelle du CHU** (`GATEWAY_URL`) — sans elle, aucune connexion ni
+   aucun service externe (auth, accueil, CHU/prise en charge, clinique,
+   notification, pharmacie, prescription) n'est joignable
+3. **Backend consultation externe** — vérifier `/health` avant de continuer
+4. **Frontend consultation externe**
 
 Le backend tolère l'indisponibilité temporaire de la base (tentatives de
 migration puis mode dégradé), mais un démarrage dans cet ordre évite toute
@@ -258,8 +276,8 @@ période de fonctionnement partiel.
 | Tous les patients « Patient introuvable » | Passerelle (`GATEWAY_URL`) ou accueil injoignable, ou trop lent (> 8 s) | `curl -H "Authorization: Bearer <JWT>" $GATEWAY_URL/accueil/patients?chuId=…` |
 | Boucle de redirection vers la connexion | `NEXT_PUBLIC_AUTH_CLIENT_URL` erronée | Reconstruire le frontend avec la bonne origine |
 | `401` sur toutes les routes | `JWT_SECRET` différent de celui du service auth | Comparer avec la configuration du service auth |
-| Liste des médecins vide | `CONSULTATION_EXTERNE_SERVICE_ID` erroné | Comparer avec le registre service-service |
-| Services cliniques absents (hospitalisation) | `GATEWAY_URL` ou `CHU_ID` erroné | `curl -H "Authorization: Bearer <JWT>" $GATEWAY_URL/services?chuId=$CHU_ID` |
+| Liste des médecins vide | Résolution de `CONSULTATION_EXTERNE_SERVICE_ID` en échec/ambiguë au démarrage | Chercher `🔎 Identité résolue` ou `❌ ... résolution de l'identité` dans les logs au démarrage |
+| Services cliniques absents (hospitalisation) | `GATEWAY_URL` injoignable, ou résolution de `CHU_ID` en échec/ambiguë | `curl -H "Authorization: Bearer <JWT>" $GATEWAY_URL/services?chuId=$CHU_ID` ; vérifier aussi les logs de démarrage |
 | Accueil : écran rendez-vous vide | Migration `SERVICE_API_TOKEN` non faite côté accueil | Chercher `[DEPRECIE]` dans les logs backend |
 | Le conteneur ne démarre pas du tout | Variable d'environnement obligatoire manquante | Les logs listent nommément les variables absentes |
 

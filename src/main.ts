@@ -2,9 +2,18 @@ import './config/assert-env';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from './app.module';
 
 async function bootstrap() {
+  // Import dynamique (pas statique en tête de fichier) : AppModule importe en
+  // cascade consultations.service.ts et consorts, qui lisent process.env.CHU_ID
+  // (et consorts) au chargement du module — il faut donc que resolveIdentityEnvVars()
+  // ait fini d'écrire ces valeurs dans process.env AVANT que ce import ne soit
+  // exécuté, ce qu'un import statique en haut de fichier ne permettrait pas
+  // (tous les imports statiques s'exécutent avant le corps de bootstrap()).
+  const { resolveIdentityEnvVars } = await import('./config/resolve-identity.js');
+  await resolveIdentityEnvVars();
+
+  const { AppModule } = await import('./app.module.js');
   const app = await NestFactory.create(AppModule);
   const apiPrefix = process.env.API_PREFIX || 'consultation/api';
 
