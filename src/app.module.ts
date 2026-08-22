@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ConsultationsModule } from './consultations/consultations.module';
 import { PlanningModule } from './planning/planning.module';
 import { MedecinsModule } from './medecins/medecins.module';
+import { PharmacieModule } from './pharmacie/pharmacie.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtGuard } from './auth/jwt.guard';
 
@@ -21,6 +22,7 @@ import { JwtGuard } from './auth/jwt.guard';
     ConsultationsModule,
     PlanningModule,
     MedecinsModule,
+    PharmacieModule,
   ],
   controllers: [AppController],
   providers: [
