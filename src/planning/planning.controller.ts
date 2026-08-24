@@ -162,12 +162,18 @@ export class PlanningController {
   @ApiResponse({ status: 200, description: 'Liste des créneaux disponibles.' })
   async findAll(@Req() req: Request) {
     const currentUser = req.user as any;
-    if (!currentUser?.medecinId) {
-      return this.planningService.findAll();
-    }
-
     const currentRole = String(currentUser?.role || '').toUpperCase();
-    if (currentRole === 'ADMIN') {
+
+    // SERVICE (token de service OU JWT d'un agent d'accueil, cf. auth.service.ts
+    // resolveRole) doit voir la vue complète, comme ADMIN — cohérent avec TOUTES
+    // les autres méthodes de ce contrôleur (create, getConflicts, update, remove…
+    // testent déjà `role !== 'ADMIN' && role !== 'SERVICE'`). Avant ce correctif,
+    // cette méthode se basait sur `!medecinId` à la place : ça fonctionnait par
+    // accident avec le token de service statique (medecinId codé en dur à null),
+    // mais un JWT d'agent d'accueil a un medecinId réel (= son propre userId, cf.
+    // buildValidatedUser) — il retombait donc à tort sur findByMedecin(userId),
+    // qui ne correspond à aucun médecin réel → liste vide.
+    if (!currentUser?.medecinId || currentRole === 'ADMIN' || currentRole === 'SERVICE') {
       return this.planningService.findAll();
     }
 

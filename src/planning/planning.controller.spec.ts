@@ -59,6 +59,35 @@ describe('PlanningController', () => {
     controller = module.get<PlanningController>(PlanningController);
   });
 
+  it('gives an admin the full planning list from the bare GET /planning', async () => {
+    const req = { user: { medecinId: 10, role: 'ADMIN' } } as any;
+    planningService.findAll.mockResolvedValue([{ id: 1, medecinId: 99 }, { id: 2, medecinId: 10 }]);
+
+    await expect(controller.findAll(req)).resolves.toEqual([{ id: 1, medecinId: 99 }, { id: 2, medecinId: 10 }]);
+    expect(planningService.findByMedecin).not.toHaveBeenCalled();
+  });
+
+  it('gives the SERVICE role (real accueil agent JWT, medecinId = their own userId) the full planning list too', async () => {
+    // Régression : un JWT d'agent d'accueil a un medecinId réel (= son propre
+    // userId, jamais null) — avant le correctif, `!medecinId` était faux et ce
+    // rôle retombait à tort sur findByMedecin(userId), qui ne correspond à
+    // aucun médecin réel.
+    const req = { user: { medecinId: 'agent-user-id', role: 'SERVICE' } } as any;
+    planningService.findAll.mockResolvedValue([{ id: 1, medecinId: 99 }, { id: 2, medecinId: 10 }]);
+
+    await expect(controller.findAll(req)).resolves.toEqual([{ id: 1, medecinId: 99 }, { id: 2, medecinId: 10 }]);
+    expect(planningService.findByMedecin).not.toHaveBeenCalled();
+  });
+
+  it('scopes a plain doctor to only their own planning from the bare GET /planning', async () => {
+    const req = { user: { medecinId: 10, role: 'MEDECIN' } } as any;
+    planningService.findByMedecin.mockResolvedValue([{ id: 2, medecinId: 10 }]);
+
+    await expect(controller.findAll(req)).resolves.toEqual([{ id: 2, medecinId: 10 }]);
+    expect(planningService.findByMedecin).toHaveBeenCalledWith('10');
+    expect(planningService.findAll).not.toHaveBeenCalled();
+  });
+
   it('allows an admin to update a planning slot owned by another doctor', async () => {
     const req = { user: { medecinId: 10, role: 'ADMIN' } } as any;
     planningService.findOne.mockResolvedValue({ id: 1, medecinId: 99 });
