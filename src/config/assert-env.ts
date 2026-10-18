@@ -22,7 +22,6 @@ loadDotenv();
 const REQUIRED_ENV_VARS = [
   'DATABASE_URL',
   'JWT_SECRET',
-  'SERVICE_API_TOKEN',
   'GATEWAY_URL',
 ] as const;
 

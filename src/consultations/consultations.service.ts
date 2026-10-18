@@ -3,13 +3,13 @@ import { Subject } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConsultationDto } from './dto/create-consultation.dto';
 import { CreateControleExterneDto } from './dto/create-controle-externe.dto';
+import { serviceAuthorization } from '../auth/service-token';
 
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback
 // codé en dur ici — une URL obsolète silencieuse a déjà causé une perte de données.
 // Accueil, clinique, CHU, services (registre) et notification passent tous par
 // la passerelle unique du CHU — une seule variable au lieu d'une par service.
 const GATEWAY_URL = process.env.GATEWAY_URL as string;
-const SERVICE_API_TOKEN = process.env.SERVICE_API_TOKEN as string;
 const CONSULTATION_EXTERNE_SERVICE_ID = process.env.CONSULTATION_EXTERNE_SERVICE_ID as string;
 // Filet de secours pour les appels sans chuId dans le token (rôle SERVICE, tâches internes).
 // En usage normal, le chuId vient du JWT de l'utilisateur connecté — jamais d'une valeur figée.
@@ -374,10 +374,9 @@ export class ConsultationsService {
       await fetch(`${GATEWAY_URL}/notifications/service`, {
         method: 'POST',
         // Aucun JWT utilisateur disponible ici (déclenché par des tâches
-        // internes, pas une requête d'un médecin connecté) — le token de
-        // service partagé, reconnu par la passerelle comme alternative à un
-        // JWT sur les routes requiresAuth (voir gateway/src/main.ts).
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_API_TOKEN}` },
+        // internes, pas une requête d'un médecin connecté) — JWT de service
+        // court signé avec le JWT_SECRET partagé (voir auth/service-token.ts).
+        headers: { 'Content-Type': 'application/json', Authorization: serviceAuthorization() },
         body: JSON.stringify({
           serviceId: CONSULTATION_EXTERNE_SERVICE_ID,
           title,

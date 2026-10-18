@@ -11,7 +11,7 @@ import type { Socket } from 'socket.io';
 // contrôle ci-dessous est un filet de sécurité TypeScript, jamais atteint en
 // pratique. Note : la passerelle proxifie bien les requêtes d'upgrade
 // WebSocket vers /socket.io (voir gateway/src/config/services.registry.ts,
-// entrée Notification, ws:true), mais son contrôle JWT/SERVICE_API_TOKEN ne
+// entrée Notification, ws:true), mais son contrôle JWT ne
 // s'applique PAS à cette voie (les upgrades ne passent jamais par la chaîne
 // de middlewares Express) — comportement inchangé par rapport à l'appel
 // direct precedent (déjà sans authentification au niveau de la connexion).

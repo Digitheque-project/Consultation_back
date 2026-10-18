@@ -38,9 +38,9 @@ function fail(message: string): never {
 async function fetchServices(): Promise<RegistryService[]> {
   // Aucun JWT médecin n'existe à ce stade (démarrage du process, avant toute
   // requête) — /services exige un JWT signé par le même secret SSO que les
-  // autres services du CHU (vérifié : ni sans token, ni avec SERVICE_API_TOKEN
-  // ça ne passe), donc on en signe un nous-mêmes, de très courte durée de
-  // vie, seulement pour cet appel de résolution.
+  // autres services du CHU, donc on en signe un nous-mêmes, de très courte
+  // durée de vie, seulement pour cet appel de résolution (même mécanisme que
+  // auth/service-token.ts).
   const bootstrapToken = jwt.sign({ userId: 'bootstrap-consultation-externe', role: 'SERVICE' }, JWT_SECRET, {
     expiresIn: '2m',
   });

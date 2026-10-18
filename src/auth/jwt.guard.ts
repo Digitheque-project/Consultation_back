@@ -24,13 +24,8 @@ export class JwtGuard implements CanActivate {
     // mais on laisse toujours passer (pas de blocage si token absent/invalide).
     if (isPublic) {
       if (token) {
-        const serviceToken = process.env.SERVICE_API_TOKEN;
-        if (serviceToken && token.trim() === serviceToken.trim()) {
-          request.user = { userId: 'service', medecinId: null, email: 'service@system', role: 'SERVICE' };
-        } else {
-          const user = await this.authService.validateToken(token);
-          if (user) request.user = user;
-        }
+        const user = this.authService.validateServiceToken(token) ?? (await this.authService.validateToken(token));
+        if (user) request.user = user;
       }
       return true;
     }
@@ -38,9 +33,11 @@ export class JwtGuard implements CanActivate {
     // Endpoints protégés : token obligatoire
     if (!authHeader) throw new UnauthorizedException('Token manquant.');
 
-    const serviceToken = process.env.SERVICE_API_TOKEN;
-    if (serviceToken && token?.trim() === serviceToken.trim()) {
-      request.user = { userId: 'service', medecinId: null, email: 'service@system', role: 'SERVICE' };
+    // Appel d'un autre service du CHU : JWT role=SERVICE signé avec le
+    // JWT_SECRET partagé (voir service-token.ts).
+    const service = this.authService.validateServiceToken(token ?? '');
+    if (service) {
+      request.user = service;
       return true;
     }
 

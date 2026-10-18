@@ -377,14 +377,14 @@ export class ConsultationsController {
       'Endpoint **public** (pas de garde de route) utilisé par le service accueil pour consulter l\'ensemble des rendez-vous enregistrés dans le module consultation externe — mais toujours authentifié : un en-tête `Authorization` valide est obligatoire.\n\n' +
       '**Accès :**\n' +
       '- Avec un **JWT médecin** (Bearer token) → accès direct, scope automatique sur son CHU.\n' +
-      '- Avec le **token de service** (`SERVICE_API_TOKEN`, service accueil) → accès complet ; préciser `?chuId=` pour cibler un CHU précis, sinon le CHU de ce déploiement est utilisé par défaut.\n' +
-      '- ⚠️ **DÉPRÉCIÉ** — sans en-tête `Authorization`, l\'accès reste toléré si `?chuId=` correspond au CHU du déploiement. Ce repli existe uniquement pour ne pas casser le service accueil pendant sa migration et **sera supprimé** : passez à `Authorization: Bearer <SERVICE_API_TOKEN>`.\n\n' +
+      '- Avec un **JWT de service** (signé avec le `JWT_SECRET` partagé, role SERVICE, ex. service accueil) → accès complet ; préciser `?chuId=` pour cibler un CHU précis, sinon le CHU de ce déploiement est utilisé par défaut.\n' +
+      '- ⚠️ **DÉPRÉCIÉ** — sans en-tête `Authorization`, l\'accès reste toléré si `?chuId=` correspond au CHU du déploiement. Ce repli existe uniquement pour ne pas casser le service accueil pendant sa migration et **sera supprimé** : passez à `Authorization: Bearer <JWT de service>`.\n\n' +
       '**Paramètres :**\n' +
       '- `chuId` (optionnel) — identifiant du CHU à consulter, pour un appel avec le token de service.\n' +
       '- `date` (optionnel) — filtrer sur une date précise (`YYYY-MM-DD`)\n' +
       '- `dateFrom` / `dateTo` (optionnel) — filtrer sur une plage de dates\n' +
       '- `archived` (optionnel, défaut `false`) — `true` pour voir les consultations terminées\n\n' +
-      '**Utilisation typique :** `GET /consultations/accueil/rendez-vous?date=2026-07-14` avec `Authorization: Bearer <SERVICE_API_TOKEN>`',
+      '**Utilisation typique :** `GET /consultations/accueil/rendez-vous?date=2026-07-14` avec `Authorization: Bearer <JWT de service>`',
   })
   @ApiQuery({ name: 'chuId', required: false, description: 'Identifiant du CHU à consulter (utile avec le token de service, qui couvre potentiellement plusieurs CHU) — ignoré/redondant avec un JWT médecin', example: '1e5bbbb7-fa10-4d59-8848-2d0ce96a9394' })
   @ApiQuery({ name: 'date', required: false, description: 'Filtrer sur une date précise (YYYY-MM-DD)', example: '2026-07-14' })
@@ -425,7 +425,7 @@ export class ConsultationsController {
   ) {
     const user = (req as any).user;
 
-    // Chemin nominal : Authorization valide (JWT médecin ou SERVICE_API_TOKEN,
+    // Chemin nominal : Authorization valide (JWT médecin ou JWT de service,
     // cf. jwt.guard.ts). C'est la seule preuve d'identité acceptable — un
     // ?chuId= en clair n'en est pas une, n'importe qui peut le deviner.
     const hasValidJwt = !!user?.userId || user?.role === 'SERVICE';
@@ -436,7 +436,7 @@ export class ConsultationsController {
       // ?chuId= avec CHU_ID. Le service accueil l'utilise encore : couper
       // net ferait tomber son écran rendez-vous le jour du déploiement.
       // On le tolère donc en journalisant un avertissement, le temps que
-      // l'accueil passe à `Authorization: Bearer <SERVICE_API_TOKEN>`.
+      // l'accueil passe à `Authorization: Bearer <JWT de service>`.
       const expectedChuId = process.env.CHU_ID;
       const legacyChuIdMatches =
         !!expectedChuId && !!chuIdParam && chuIdParam.trim() === expectedChuId;
@@ -448,7 +448,7 @@ export class ConsultationsController {
       this.logger.warn(
         `[DEPRECIE] GET /consultations/accueil/rendez-vous appelé sans Authorization, ` +
           `autorisé via ?chuId= (compatibilité). L'appelant doit migrer vers ` +
-          `"Authorization: Bearer <SERVICE_API_TOKEN>" — ce repli sera supprimé.`,
+          `"Authorization: Bearer <JWT de service>" — ce repli sera supprimé.`,
       );
     }
 

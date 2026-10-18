@@ -1,13 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { serviceAuthorization } from '../auth/service-token';
 
 // GATEWAY_URL est obligatoire au démarrage (voir config/assert-env.ts) — le
 // contrôle ci-dessous est un filet de sécurité TypeScript, jamais atteint en
 // pratique.
 const GATEWAY_URL = process.env.GATEWAY_URL;
 // Route @Public() côté nous (voir notification.controller.ts) : aucun JWT
-// médecin en scope ici, donc le token de service partagé, requis par la
-// passerelle sur /notifications (requiresAuth).
-const SERVICE_API_TOKEN = process.env.SERVICE_API_TOKEN as string;
+// médecin en scope ici, donc un JWT de service court (voir
+// auth/service-token.ts), requis par la passerelle sur /notifications
+// (requiresAuth).
 
 @Injectable()
 export class NotificationService {
@@ -22,7 +23,7 @@ export class NotificationService {
     try {
       const response = await fetch(`${GATEWAY_URL}/notifications/user/${encodeURIComponent(userId)}`, {
         signal: AbortSignal.timeout(8000),
-        headers: { Authorization: `Bearer ${SERVICE_API_TOKEN}` },
+        headers: { Authorization: serviceAuthorization() },
       });
       if (!response.ok) return [];
       return response.json();

@@ -37,9 +37,8 @@ service distant est injoignable, la fonctionnalité listée se dégrade.
 > ce réseau (Render, ou une instance de la même passerelle déployée en
 > local) — voir le dépôt `gateway` (Digitheque-project/gateway). Les appels
 > sans JWT médecin en scope (notifyOurService, historique notification)
-> utilisent `SERVICE_API_TOKEN` à la place — **doit être configuré avec la
-> même valeur côté passerelle**, sans quoi ces appels précis échouent en 401
-> même si tout le reste fonctionne.
+> utilisent à la place un JWT de service court, signé avec le même
+> `JWT_SECRET` que tous les services (rien d'autre à configurer).
 >
 > **Important** : les appels vers l'accueil et le CHU (via la passerelle) ont
 > un délai d'expiration de **8 secondes**. Si la passerelle ou les services
@@ -56,7 +55,7 @@ services. Elles sont documentées dans le Swagger « services externes »
 
 | Route | Appelé par | Authentification |
 |---|---|---|
-| `GET /consultations/accueil/rendez-vous` | Accueil | `Bearer SERVICE_API_TOKEN` — *voir note de migration ci-dessous* |
+| `GET /consultations/accueil/rendez-vous` | Accueil | `Bearer <JWT de service>` (signé avec `JWT_SECRET`, `role: "SERVICE"`) — *voir note de migration ci-dessous* |
 | `POST /consultations` | Accueil | Aucune |
 | `POST /consultations/{id}/arrival` | Accueil | Aucune |
 | `POST /consultations/{id}/report` | Accueil | Aucune |
@@ -67,7 +66,8 @@ services. Elles sont documentées dans le Swagger « services externes »
 | `GET /health` | Docker / supervision | Aucune |
 
 > ⚠️ **Migration en cours — `GET /consultations/accueil/rendez-vous`**
-> Cette route accepte désormais `Authorization: Bearer <SERVICE_API_TOKEN>`.
+> Cette route accepte `Authorization: Bearer <JWT de service>` (JWT court
+> signé avec le `JWT_SECRET` partagé, `role: "SERVICE"`).
 > L'ancien mécanisme (autorisation sur simple correspondance de `?chuId=`) est
 > **encore toléré** pour ne pas interrompre le service accueil, mais il est
 > **déprécié** : chaque appel sans en-tête `Authorization` écrit un
@@ -91,7 +91,7 @@ services. Elles sont documentées dans le Swagger « services externes »
 ### 3.1 Variables d'environnement
 
 Toutes sont lues **au runtime** (`docker run -e` / `--env-file`), aucune n'est
-à passer au build. Le service **refuse de démarrer** si l'une des 4 variables
+à passer au build. Le service **refuse de démarrer** si l'une des 3 variables
 obligatoires manque (`src/config/assert-env.ts` affiche la liste exacte).
 
 **Règle : chaque URL ne contient que l'origine** (schéma + hôte + port), jamais
@@ -101,7 +101,6 @@ de chemin — le code ajoute les chemins lui-même.
 # Obligatoires
 DATABASE_URL=postgresql://user:motdepasse@postgres.chu.local:5432/consultation_externe
 JWT_SECRET=<secret de signature du service auth du CHU>
-SERVICE_API_TOKEN=<jeton partagé serveur-à-serveur — doit être identique côté passerelle>
 GATEWAY_URL=http://gateway.chu.local
 
 # Optionnelles
@@ -173,9 +172,10 @@ curl http://localhost:3333/consultation/api/health
 curl -o /dev/null -w '%{http_code}\n' http://localhost:3333/consultation/api/consultations
 # → 401
 
-# 3. Le token de service fonctionne
+# 3. Un JWT de service (signé avec JWT_SECRET) est accepté
+SERVICE_JWT=$(node -e "console.log(require('jsonwebtoken').sign({userId:'service-test',role:'SERVICE'},process.env.JWT_SECRET,{expiresIn:'2m'}))")
 curl -o /dev/null -w '%{http_code}\n' \
-  -H "Authorization: Bearer $SERVICE_API_TOKEN" \
+  -H "Authorization: Bearer $SERVICE_JWT" \
   http://localhost:3333/consultation/api/consultations
 # → 200
 
@@ -209,7 +209,6 @@ docker build \
 
 docker run -d --name consultation-front \
   -p 3000:3000 \
-  -e SERVICE_API_TOKEN=<même jeton que le backend> \
   --restart unless-stopped \
   chu-consultation-front
 ```
@@ -228,8 +227,6 @@ Rappels :
   les appelle plus jamais directement.
 - `NEXT_PUBLIC_API_URL` : concerne le backend **SIH/hospitalisation**, pas le
   nôtre — inutile pour un déploiement consultation externe seul.
-- `SERVICE_API_TOKEN` est la seule variable lue au **runtime** (routes serveur
-  `app/api/…`), donc fournie avec `-e`.
 
 ### 4.3 Vérification
 
@@ -278,7 +275,7 @@ période de fonctionnement partiel.
 | `401` sur toutes les routes | `JWT_SECRET` différent de celui du service auth | Comparer avec la configuration du service auth |
 | Liste des médecins vide | Résolution de `CONSULTATION_EXTERNE_SERVICE_ID` en échec/ambiguë au démarrage | Chercher `🔎 Identité résolue` ou `❌ ... résolution de l'identité` dans les logs au démarrage |
 | Services cliniques absents (hospitalisation) | `GATEWAY_URL` injoignable, ou résolution de `CHU_ID` en échec/ambiguë | `curl -H "Authorization: Bearer <JWT>" $GATEWAY_URL/services?chuId=$CHU_ID` ; vérifier aussi les logs de démarrage |
-| Accueil : écran rendez-vous vide | Migration `SERVICE_API_TOKEN` non faite côté accueil | Chercher `[DEPRECIE]` dans les logs backend |
+| Accueil : écran rendez-vous vide | L'accueil n'envoie pas encore de JWT de service | Chercher `[DEPRECIE]` dans les logs backend |
 | Le conteneur ne démarre pas du tout | Variable d'environnement obligatoire manquante | Les logs listent nommément les variables absentes |
 
 Logs :

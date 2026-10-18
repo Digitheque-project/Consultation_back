@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { SERVICE_ROLE } from './service-token';
 
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback codé en dur.
 // Passe par la passerelle unique du CHU — voir GATEWAY_URL dans .env.example.
@@ -154,6 +155,21 @@ export class AuthService {
     };
     this.cacheMedecin(user);
     return user;
+  }
+
+  /**
+   * Jeton de service (appel d'un autre backend du CHU, sans médecin) : JWT
+   * signé avec le JWT_SECRET partagé et portant role=SERVICE. Vérifié
+   * localement, jamais mis en cache médecin (ce n'est pas un médecin).
+   */
+  validateServiceToken(token: string): { userId: string; medecinId: null; email: string; role: 'SERVICE' } | null {
+    try {
+      const payload = this.jwtService.verify<Record<string, any>>(token);
+      if (payload?.role !== SERVICE_ROLE) return null;
+      return { userId: String(payload.userId ?? payload.sub ?? 'service'), medecinId: null, email: 'service@system', role: 'SERVICE' };
+    } catch {
+      return null;
+    }
   }
 
   async validateToken(token: string): Promise<ValidatedUser | null> {
