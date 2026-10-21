@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Subject } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConsultationDto } from './dto/create-consultation.dto';
@@ -879,6 +879,21 @@ export class ConsultationsService {
     if (action === 'ouvrir') {
       if (consultation.termine) {
         throw new BadRequestException('Consultation déjà terminée');
+      }
+
+      // Un médecin ne mène qu'une consultation à la fois : on refuse d'en
+      // ouvrir une autre tant que la précédente est "en cours" (le front
+      // propose alors de la reprendre).
+      const autreEnCours = await this.prisma.consultation.findFirst({
+        where: { id: { not: id }, medecinId: consultation.medecinId, statut: 'EN_COURS', termine: false },
+        select: { id: true },
+      });
+      if (autreEnCours) {
+        throw new ConflictException({
+          statusCode: 409,
+          message: "Une autre consultation est déjà en cours. Terminez-la ou faites « Retour » avant d'en ouvrir une nouvelle.",
+          consultationEnCoursId: autreEnCours.id,
+        });
       }
 
       await this.prisma.consultation.update({

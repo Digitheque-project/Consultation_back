@@ -1,4 +1,4 @@
-﻿import { ConsultationsService } from './consultations.service';
+import { ConsultationsService } from './consultations.service';
 
 describe('ConsultationsService', () => {
   let service: ConsultationsService;
@@ -9,6 +9,7 @@ describe('ConsultationsService', () => {
       consultation: {
         findUnique: jest.fn(),
         findMany: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
         create: jest.fn(),
       },
@@ -269,5 +270,32 @@ describe('ConsultationsService', () => {
         ]),
       }),
     );
+  });
+  describe('ouverture (une seule consultation en cours par médecin)', () => {
+    const medecinId = 'c2ded010-e37a-4ec1-bf93-4712393ba231';
+    beforeEach(() => {
+      prisma.consultation.findUnique.mockResolvedValue({ id: 2, medecinId, termine: false, statut: 'EN_ATTENTE' });
+      prisma.consultation.update.mockResolvedValue({ id: 2, statut: 'EN_COURS' });
+    });
+
+    it("ouvre la consultation quand aucune autre n'est en cours", async () => {
+      prisma.consultation.findFirst.mockResolvedValue(null);
+      const result = await service.traiterConsultation(2, { action: 'ouvrir' }, medecinId);
+      expect(result.consultation.statut).toBe('EN_COURS');
+      expect(prisma.consultation.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: { not: 2 }, medecinId, statut: 'EN_COURS', termine: false }),
+        }),
+      );
+    });
+
+    it('refuse (409) si une autre consultation du médecin est déjà en cours', async () => {
+      prisma.consultation.findFirst.mockResolvedValue({ id: 7 });
+      await expect(service.traiterConsultation(2, { action: 'ouvrir' }, medecinId)).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({ consultationEnCoursId: 7 }),
+      });
+      expect(prisma.consultation.update).not.toHaveBeenCalled();
+    });
   });
 });
