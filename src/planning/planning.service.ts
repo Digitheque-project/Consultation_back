@@ -199,6 +199,25 @@ export class PlanningService {
       throw new BadRequestException('Impossible de modifier un créneau passé.');
     }
 
+    // La date arrive au format YYYY-MM-DD : Prisma exige une date complète et
+    // répondait 500, si bien qu'aucune modification d'un créneau seul n'aboutissait.
+    const date = data.date ? this.normalizeDate(data.date as string | Date) : undefined;
+    if (date && this.isPastDate(date)) {
+      throw new BadRequestException('Impossible de déplacer un créneau à une date passée.');
+    }
+    // Même règle qu'à la création : pas de créneau un jour d'indisponibilité.
+    const disponible = typeof data.disponible === 'boolean' ? data.disponible : current.disponible;
+    if (date && disponible) {
+      const unavailability = await this.prisma.planning.findFirst({
+        where: { id: { not: id }, medecinId: current.medecinId, date, disponible: false },
+      });
+      if (unavailability) {
+        throw new BadRequestException(
+          'Impossible de déplacer le créneau à cette date : le médecin est indisponible.',
+        );
+      }
+    }
+
     if (data.heureDebut && data.heureFin) {
       this.validateTimeRange(String(data.heureDebut), String(data.heureFin));
     } else if (data.heureDebut && current.heureFin) {
@@ -213,7 +232,7 @@ export class PlanningService {
 
     return this.prisma.planning.update({
       where: { id },
-      data,
+      data: date ? { ...data, date } : data,
     });
   }
 
