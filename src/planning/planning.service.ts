@@ -108,6 +108,45 @@ export class PlanningService {
     return parsed;
   }
 
+  // Un médecin ne peut pas avoir deux créneaux qui se recouvrent le même jour :
+  // l'accueil en voyait deux sur la même heure, chacun avec son propre quota.
+  // Les indisponibilités (disponible:false) ne sont pas concernées.
+  private async assertSansChevauchement(
+    medecinId: string,
+    dates: Date[],
+    heureDebut: string,
+    heureFin: string,
+    exclure: { id?: number; seriesId?: string } = {},
+  ): Promise<void> {
+    if (dates.length === 0) return;
+    const jour = (d: Date) => d.toISOString().slice(0, 10);
+    const jours = new Set(dates.map(jour));
+    const debut = new Date(Math.min(...dates.map((d) => d.getTime())));
+    const fin = new Date(Math.max(...dates.map((d) => d.getTime())) + 24 * 60 * 60 * 1000);
+    const existants = await this.prisma.planning.findMany({
+      where: {
+        medecinId,
+        disponible: true,
+        date: { gte: debut, lt: fin },
+        heureDebut: { lt: heureFin },
+        heureFin: { gt: heureDebut },
+        ...(exclure.id ? { id: { not: exclure.id } } : {}),
+        ...(exclure.seriesId ? { NOT: { seriesId: exclure.seriesId } } : {}),
+      },
+      orderBy: { date: 'asc' },
+    });
+    const conflits = existants.filter((s) => jours.has(jour(s.date)));
+    if (conflits.length > 0) {
+      const detail = conflits
+        .slice(0, 5)
+        .map((s) => `${jour(s.date)} ${s.heureDebut}-${s.heureFin}`)
+        .join(', ');
+      throw new BadRequestException(
+        `Ce créneau chevauche un créneau déjà planifié pour ce médecin (${detail}${conflits.length > 5 ? '…' : ''}).`,
+      );
+    }
+  }
+
   // Défense en profondeur : le frontend bloque déjà l'édition des créneaux
   // passés (isPastSlotDate), mais rien n'empêchait un appel API direct.
   private isPastDate(date: Date): boolean {
@@ -138,6 +177,12 @@ export class PlanningService {
           'Impossible de créer un créneau pour cette date : le médecin est indisponible.',
         );
       }
+      await this.assertSansChevauchement(
+        String(preparedData.medecinId),
+        [preparedData.date as Date],
+        String(preparedData.heureDebut),
+        String(preparedData.heureFin),
+      );
     }
 
     return this.prisma.planning.create({ data: preparedData });
@@ -230,6 +275,16 @@ export class PlanningService {
       this.validateQuota(Number(data.quota));
     }
 
+    if (disponible && (date || data.heureDebut || data.heureFin)) {
+      await this.assertSansChevauchement(
+        current.medecinId,
+        [date ?? current.date],
+        String(data.heureDebut ?? current.heureDebut),
+        String(data.heureFin ?? current.heureFin),
+        { id },
+      );
+    }
+
     return this.prisma.planning.update({
       where: { id },
       data: date ? { ...data, date } : data,
@@ -295,6 +350,9 @@ export class PlanningService {
     }
     if (dates.length > 260) {
       throw new BadRequestException('Trop de créneaux générés (max 260) — réduisez la période.');
+    }
+    if (dto.disponible !== false) {
+      await this.assertSansChevauchement(dto.medecinId, dates, dto.heureDebut, dto.heureFin);
     }
 
     const rows: Prisma.PlanningCreateManyInput[] = dates.map((date) => ({
@@ -417,6 +475,22 @@ export class PlanningService {
     }
     if (typeof data.quota !== 'undefined') {
       this.validateQuota(Number(data.quota));
+    }
+
+    // Nouvelles heures : elles ne doivent recouvrir aucun autre créneau du médecin.
+    if (data.heureDebut || data.heureFin) {
+      const occurrences = await this.prisma.planning.findMany({
+        where: { seriesId, date: { gte: effectiveFrom }, disponible: true },
+      });
+      if (occurrences.length > 0) {
+        await this.assertSansChevauchement(
+          occurrences[0].medecinId,
+          occurrences.map((o) => o.date),
+          String(data.heureDebut ?? occurrences[0].heureDebut),
+          String(data.heureFin ?? occurrences[0].heureFin),
+          { seriesId },
+        );
+      }
     }
 
     await this.prisma.planning.updateMany({

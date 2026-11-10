@@ -502,6 +502,24 @@ export class ConsultationsService {
     };
   }
 
+  // Arrivée automatique seulement si le créneau a déjà commencé : un rendez-vous
+  // pris pour plus tard dans la journée attend son « Confirmer l'arrivée ». Heure
+  // du CHU (et non du serveur, en UTC).
+  private dejaArrive(date: string, heure: string): boolean {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: process.env.CHU_TIMEZONE || 'Indian/Antananarivo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const v = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+    const aujourdhui = `${v('year')}-${v('month')}-${v('day')}`;
+    return date.slice(0, 10) === aujourdhui && heure <= `${v('hour')}:${v('minute')}`;
+  }
+
   private async ensureMedecinQuota(medecinId: string, date: Date, heure: string) {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
@@ -521,11 +539,13 @@ export class ConsultationsService {
       throw new BadRequestException('Le médecin n’a pas de créneau disponible à cette date et heure.');
     }
 
+    // Un rendez-vous reporté a libéré sa place.
     const existingCount = await this.prisma.consultation.count({
       where: {
         medecinId,
         date: { gte: startOfDay, lte: endOfDay },
         heure: { gte: slot.heureDebut, lt: slot.heureFin },
+        statut: { not: 'REPORTEE' },
       },
     });
 
@@ -540,8 +560,7 @@ export class ConsultationsService {
     const consultationDate = new Date(data.date);
     await this.ensureMedecinQuota(data.medecinId, consultationDate, data.heure);
 
-    const todayKey = new Date().toISOString().slice(0, 10);
-    const isToday = data.date.slice(0, 10) === todayKey;
+    const isToday = this.dejaArrive(data.date, data.heure);
 
     const typeVisite = data.typeVisite ?? 'INITIAL';
     const isControle = typeVisite === 'CONTROLE';
@@ -591,8 +610,7 @@ export class ConsultationsService {
     const consultationDate = new Date(data.date);
     await this.ensureMedecinQuota(data.medecinId, consultationDate, data.heure);
 
-    const todayKey = new Date().toISOString().slice(0, 10);
-    const isToday = data.date.slice(0, 10) === todayKey;
+    const isToday = this.dejaArrive(data.date, data.heure);
 
     const consultation = await this.prisma.consultation.create({
       data: {
@@ -961,6 +979,8 @@ export class ConsultationsService {
       }
 
       const newMedecinId: string = data?.medecinId ? String(data.medecinId) : (medecinId ?? consultation.medecinId);
+      // Même contrôle qu'à la prise de rendez-vous : pas de report dans un créneau plein.
+      await this.ensureMedecinQuota(newMedecinId, newDate, data?.heure ?? consultation.heure);
 
       const reported = await this.prisma.consultation.create({
         data: {
