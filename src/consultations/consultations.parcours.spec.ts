@@ -47,3 +47,37 @@ describe('ConsultationsService.getParcours', () => {
     await expect(service.getParcours(3, 'autre')).rejects.toThrow(ForbiddenException);
   });
 });
+
+// Archive par patient : un patient revenu plusieurs fois a une seule archive.
+describe('ConsultationsService.getParcoursPatient', () => {
+  const base = { patientId: 'pat1', medecinId: 'doc1', typeVisite: 'INITIAL', ordreControle: null, consultationParenteId: null, termine: true };
+  const liste = [
+    { ...base, id: 1, date: new Date('2026-09-01') },
+    { ...base, id: 2, date: new Date('2026-09-08'), typeVisite: 'CONTROLE', ordreControle: 1, consultationParenteId: 1 },
+    { ...base, id: 5, date: new Date('2026-11-02') },
+    { ...base, id: 6, date: new Date('2026-11-09'), typeVisite: 'CONTROLE', ordreControle: 1, consultationParenteId: 5, termine: false },
+    { ...base, id: 9, date: new Date('2026-11-20'), termine: false },
+    { ...base, id: 10, date: new Date('2026-10-01'), medecinId: 'autre' },
+  ];
+  let service: ConsultationsService;
+  beforeEach(() => {
+    const prisma: any = {
+      consultation: { findMany: jest.fn().mockResolvedValue(liste) },
+      medecinCache: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    service = new ConsultationsService(prisma);
+    jest.spyOn(service as any, 'fetchPatientsMap').mockResolvedValue(new Map());
+    jest.spyOn(service as any, 'fetchPriseEnChargeMap').mockResolvedValue(new Map());
+  });
+
+  it('regroupe chaque parcours, le plus récent en premier, sans les rendez-vous pas encore tenus', async () => {
+    const r = await service.getParcoursPatient('pat1', undefined);
+    expect(r.parcours.map((p: any) => p.etapes.map((e: any) => e.id))).toEqual([[5, 6], [10], [1, 2]]);
+    expect(r.parcours[0].termine).toBe(false);
+  });
+
+  it("un médecin ne voit que les parcours auxquels il a participé", async () => {
+    const r = await service.getParcoursPatient('pat1', 'doc1');
+    expect(r.parcours.map((p: any) => p.etapes[0].id)).toEqual([5, 1]);
+  });
+});

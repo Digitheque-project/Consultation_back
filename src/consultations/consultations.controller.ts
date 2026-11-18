@@ -190,6 +190,15 @@ export class ConsultationsController {
     return this.consultationsService.createConsultation(data);
   }
 
+  @Get('patient/:patientId/parcours')
+  @ApiOperation({
+    summary: "Archive d'un patient : tous ses parcours",
+    description: 'Chaque consultation initiale avec ses contrôles, du plus récent au plus ancien',
+  })
+  async getParcoursPatient(@Req() req: Request, @Param('patientId') patientId: string) {
+    return this.consultationsService.getParcoursPatient(patientId, this.getEffectiveMedecinId(req), this.getChuId(req), this.getRawToken(req));
+  }
+
   @Get('patient/:patientId/history')
   @ApiOperation({
     summary: 'Obtenir l�historique des consultations d�un patient',

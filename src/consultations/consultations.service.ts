@@ -756,6 +756,69 @@ export class ConsultationsService {
   }
 
   /**
+   * Archive d'un patient : tous ses parcours (chaque consultation initiale avec
+   * ses contrôles et reports), du plus récent au plus ancien. Un patient revenu
+   * dix fois a une seule archive qui liste ses dix prises en charge.
+   * Un médecin ne voit que les parcours auxquels il a participé.
+   */
+  async getParcoursPatient(patientId: string, medecinId: string | undefined, chuId?: string, token?: string) {
+    const toutes = await this.prisma.consultation.findMany({
+      where: { patientId },
+      include: { observation: true, parametresCliniques: true, nonMedicamentPrescriptions: true },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+    const parId = new Map(toutes.map((c) => [c.id, c]));
+    const racineDe = (c: (typeof toutes)[number]) => {
+      let r = c;
+      const vues = new Set<number>([r.id]);
+      while (r.consultationParenteId != null && parId.has(r.consultationParenteId) && !vues.has(r.consultationParenteId)) {
+        r = parId.get(r.consultationParenteId)!;
+        vues.add(r.id);
+      }
+      return r.id;
+    };
+    const groupes = new Map<number, typeof toutes>();
+    for (const c of toutes) {
+      const r = racineDe(c);
+      groupes.set(r, [...(groupes.get(r) ?? []), c]);
+    }
+
+    const medecins = await this.prisma.medecinCache.findMany({
+      where: { id: { in: [...new Set(toutes.map((e) => e.medecinId))] } },
+    });
+    const nomMedecin = new Map(medecins.map((m) => [m.id, `${m.prenom ?? ''} ${m.nom ?? ''}`.trim()]));
+
+    const parcours = [...groupes.values()]
+      // Archive : seulement les parcours dont au moins une étape est close.
+      .filter((etapes) => etapes.some((e) => e.termine))
+      .filter((etapes) => !medecinId || etapes.some((e) => e.medecinId === medecinId))
+      .map((etapes) => ({
+        debut: etapes[0].date,
+        fin: etapes[etapes.length - 1].date,
+        termine: etapes.every((e) => e.termine),
+        etapes: etapes.map((e) => {
+          const isControl = e.typeVisite === 'CONTROLE' || e.consultationParenteId !== null;
+          return {
+            ...e,
+            medecinNom: nomMedecin.get(e.medecinId) || null,
+            isControl,
+            controleLabel: isControl ? this.getControlLabel(e.ordreControle) : null,
+          };
+        }),
+      }))
+      .sort((a, b) => b.debut.getTime() - a.debut.getTime());
+
+    const [patientsMap, pecMap] = await Promise.all([
+      this.fetchPatientsMap(chuId, token),
+      this.fetchPriseEnChargeMap(chuId, token),
+    ]);
+    return {
+      patient: this.enrichPatient({ patientId }, patientsMap, pecMap).patient,
+      parcours,
+    };
+  }
+
+  /**
    * Parcours complet d'une prise en charge, pour l'archive : la consultation
    * initiale et tous ses contrôles (et reports), chacun avec le médecin qui l'a
    * menée, son observation, ses paramètres et ses demandes. L'archive sert à
