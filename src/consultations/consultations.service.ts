@@ -755,6 +755,71 @@ export class ConsultationsService {
     return this.enrichPatient(consultation, patientsMap, pecMap);
   }
 
+  /**
+   * Parcours complet d'une prise en charge, pour l'archive : la consultation
+   * initiale et tous ses contrôles (et reports), chacun avec le médecin qui l'a
+   * menée, son observation, ses paramètres et ses demandes. L'archive sert à
+   * vérifier tout ce qui a été fait au patient : rien ne doit y manquer.
+   */
+  async getParcours(id: number, medecinId: string | undefined, chuId?: string, token?: string) {
+    const depart = await this.prisma.consultation.findUnique({ where: { id } });
+    if (!depart) {
+      throw new NotFoundException('Consultation non trouvée');
+    }
+    if (medecinId && depart.medecinId !== medecinId) {
+      throw new ForbiddenException('Accès refusé à cette consultation');
+    }
+
+    // Remonter jusqu'à la consultation initiale.
+    let racine = depart;
+    const vues = new Set<number>([racine.id]);
+    while (racine.consultationParenteId != null && !vues.has(racine.consultationParenteId)) {
+      const parente = await this.prisma.consultation.findUnique({ where: { id: racine.consultationParenteId } });
+      if (!parente) break;
+      vues.add(parente.id);
+      racine = parente;
+    }
+
+    // Puis redescendre : tous les contrôles et reports qui en découlent.
+    const ids = new Set<number>([racine.id]);
+    let niveau = [racine.id];
+    while (niveau.length > 0) {
+      const enfants = await this.prisma.consultation.findMany({
+        where: { consultationParenteId: { in: niveau }, id: { notIn: [...ids] } },
+        select: { id: true },
+      });
+      niveau = enfants.map((e) => e.id);
+      niveau.forEach((e) => ids.add(e));
+    }
+
+    const etapes = await this.prisma.consultation.findMany({
+      where: { id: { in: [...ids] } },
+      include: { observation: true, parametresCliniques: true, nonMedicamentPrescriptions: true },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+    const medecins = await this.prisma.medecinCache.findMany({
+      where: { id: { in: [...new Set(etapes.map((e) => e.medecinId))] } },
+    });
+    const nomMedecin = new Map(medecins.map((m) => [m.id, `${m.prenom ?? ''} ${m.nom ?? ''}`.trim()]));
+
+    const [patientsMap, pecMap] = await Promise.all([
+      this.fetchPatientsMap(chuId, token),
+      this.fetchPriseEnChargeMap(chuId, token),
+    ]);
+    return {
+      patient: this.enrichPatient(racine, patientsMap, pecMap).patient,
+      etapes: etapes.map((e) => {
+        const isControl = e.typeVisite === 'CONTROLE' || e.consultationParenteId !== null;
+        return {
+          ...e,
+          medecinNom: nomMedecin.get(e.medecinId) || null,
+          isControl,
+          controleLabel: isControl ? this.getControlLabel(e.ordreControle) : null,
+        };
+      }),
+    };
+  }
+
   async finalizeConsultation(id: number, data: any, medecinId: string | undefined, token?: string, chuId?: string) {
     const { observation, nonMedicaments, parametres } = data;
 

@@ -241,6 +241,16 @@ export class ConsultationsController {
     return this.consultationsService.getHospitalisationServices(this.getChuId(req), this.getRawToken(req));
   }
 
+  @Get(':id/parcours')
+  @ApiOperation({
+    summary: "Parcours complet d'une prise en charge (archive)",
+    description: 'Consultation initiale et tous ses contrôles, avec observation, paramètres et demandes de chaque étape',
+  })
+  @ApiParam({ name: 'id', description: "ID d'une consultation du parcours", type: 'number' })
+  async getParcours(@Req() req: Request, @Param('id') id: string) {
+    return this.consultationsService.getParcours(+id, this.getEffectiveMedecinId(req), this.getChuId(req), this.getRawToken(req));
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Obtenir une consultation par ID',
