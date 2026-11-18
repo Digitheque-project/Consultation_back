@@ -468,6 +468,13 @@ export class ConsultationsService {
     }
 
     const arriveeAccueil = Boolean(data?.arriveeAccueil ?? false);
+    // Un patient venu le matin pour un créneau de l'après-midi repart puis revient :
+    // il n'est « arrivé » qu'une fois son créneau commencé, le jour même.
+    if (arriveeAccueil && !consultation.arriveeAccueil && !this.dejaArrive(consultation.date.toISOString(), consultation.heure)) {
+      throw new BadRequestException(
+        `Le créneau de ce patient commence à ${consultation.heure} le ${consultation.date.toISOString().slice(0, 10).split('-').reverse().join('/')} : son arrivée se confirme à ce moment-là.`,
+      );
+    }
     const arriveeAccueilAt = data?.arriveeAccueilAt === undefined
       ? (arriveeAccueil ? new Date() : null)
       : data.arriveeAccueilAt

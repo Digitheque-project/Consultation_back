@@ -1,5 +1,11 @@
 import { ConsultationsService } from './consultations.service';
 
+// Jour courant au CHU, à minuit UTC (forme des dates de consultation en base).
+const aujourdhuiAuChu = () =>
+  new Date(
+    `${new Intl.DateTimeFormat('en-CA', { timeZone: process.env.CHU_TIMEZONE || 'Indian/Antananarivo' }).format(new Date())}T00:00:00.000Z`,
+  );
+
 describe('ConsultationsService', () => {
   let service: ConsultationsService;
   let prisma: any;
@@ -58,8 +64,8 @@ describe('ConsultationsService', () => {
       id: 1,
       medecinId: 'c2ded010-e37a-4ec1-bf93-4712393ba231',
       patientId: 10,
-      date: new Date('2026-06-25T09:00:00.000Z'),
-      heure: '09:00',
+      date: aujourdhuiAuChu(),
+      heure: '00:00',
       termine: false,
       statut: 'INITIAL',
       urgence: false,
@@ -81,13 +87,46 @@ describe('ConsultationsService', () => {
     );
   });
 
+  it("refuse l'arrivée avant le début du créneau (patient du soir venu le matin)", async () => {
+    prisma.consultation.findUnique.mockResolvedValue({
+      id: 2,
+      medecinId: 'c2ded010-e37a-4ec1-bf93-4712393ba231',
+      patientId: 10,
+      date: aujourdhuiAuChu(),
+      heure: '23:59',
+      arriveeAccueil: false,
+      termine: false,
+      statut: 'EN_ATTENTE',
+      urgence: false,
+    });
+
+    await expect(service.markConsultationArrival(2, { arriveeAccueil: true })).rejects.toThrow(/commence à 23:59/);
+    expect(prisma.consultation.update).not.toHaveBeenCalled();
+  });
+
+  it("refuse l'arrivée d'un rendez-vous d'un autre jour", async () => {
+    prisma.consultation.findUnique.mockResolvedValue({
+      id: 3,
+      medecinId: 'c2ded010-e37a-4ec1-bf93-4712393ba231',
+      patientId: 10,
+      date: new Date(aujourdhuiAuChu().getTime() + 24 * 60 * 60 * 1000),
+      heure: '08:00',
+      arriveeAccueil: false,
+      termine: false,
+      statut: 'EN_ATTENTE',
+      urgence: false,
+    });
+
+    await expect(service.markConsultationArrival(3, { arriveeAccueil: true })).rejects.toThrow(/arrivée se confirme/);
+  });
+
   it('allows arrival confirmation without a doctor ownership context', async () => {
     prisma.consultation.findUnique.mockResolvedValue({
       id: 1,
       medecinId: 'c2ded010-e37a-4ec1-bf93-4712393ba231',
       patientId: 10,
-      date: new Date('2026-06-25T09:00:00.000Z'),
-      heure: '09:00',
+      date: aujourdhuiAuChu(),
+      heure: '00:00',
       termine: false,
       statut: 'INITIAL',
       urgence: false,
