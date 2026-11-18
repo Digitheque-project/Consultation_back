@@ -186,7 +186,7 @@ describe('ConsultationsService', () => {
       date: new Date('2026-06-25T09:00:00.000Z'),
       heure: '09:00',
       termine: false,
-      statut: 'TERMINÉ',
+      statut: 'TERMINE',
       urgence: false,
       ordreControle: null,
     });
@@ -194,7 +194,7 @@ describe('ConsultationsService', () => {
     prisma.observationMedicale.upsert.mockResolvedValue({});
     prisma.prescriptionNonMedicamenteuse.deleteMany.mockResolvedValue({});
     prisma.prescriptionNonMedicamenteuse.create.mockResolvedValue({ id: 77 });
-    prisma.consultation.update.mockResolvedValue({ id: 1, statut: 'TERMINÉ', termine: true });
+    prisma.consultation.update.mockResolvedValue({ id: 1, statut: 'TERMINE', termine: true });
     prisma.consultation.create.mockResolvedValue({ id: 2, statut: 'EN_ATTENTE_CONTROLE', termine: false });
 
     const result = await service.finalizeConsultation(
@@ -230,7 +230,7 @@ describe('ConsultationsService', () => {
         medecinId: 'c2ded010-e37a-4ec1-bf93-4712393ba231',
         date: new Date('2026-06-20T09:00:00.000Z'),
         heure: '09:00',
-        statut: 'TERMINÉ',
+        statut: 'TERMINE',
         urgence: false,
         termine: true,
         typeVisite: 'INITIAL',
@@ -271,7 +271,7 @@ describe('ConsultationsService', () => {
     prisma.parametreClinique.createMany.mockResolvedValue({ count: 3 });
     prisma.prescriptionNonMedicamenteuse.deleteMany.mockResolvedValue({});
     prisma.prescriptionNonMedicamenteuse.create.mockResolvedValue({ id: 77 });
-    prisma.consultation.update.mockResolvedValue({ id: 1, statut: 'TERMINÉ', termine: true });
+    prisma.consultation.update.mockResolvedValue({ id: 1, statut: 'TERMINE', termine: true });
     prisma.consultation.create.mockResolvedValue({ id: 2, statut: 'EN_ATTENTE_CONTROLE', termine: false });
 
     await service.finalizeConsultation(

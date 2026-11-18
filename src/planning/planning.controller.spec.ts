@@ -88,6 +88,30 @@ describe('PlanningController', () => {
     expect(planningService.findAll).not.toHaveBeenCalled();
   });
 
+  it('RG15 : passes the CHU of the token to findAll for the full planning view', async () => {
+    const req = { user: { medecinId: 'agent', role: 'SERVICE', chuId: 'chu-a' } } as any;
+    planningService.findAll.mockResolvedValue([]);
+
+    await controller.findAll(req);
+    expect(planningService.findAll).toHaveBeenCalledWith('chu-a');
+  });
+
+  it('returns no slot (instead of the whole planning) to a token without doctor nor management role', async () => {
+    const req = { user: { role: 'MEDECIN' } } as any;
+
+    await expect(controller.findAll(req)).resolves.toEqual([]);
+    expect(planningService.findAll).not.toHaveBeenCalled();
+    expect(planningService.findByMedecin).not.toHaveBeenCalled();
+  });
+
+  it('RG15 : stores the CHU of the token on a new slot', async () => {
+    const req = { user: { medecinId: '10', role: 'MEDECIN', chuId: 'chu-a' } } as any;
+    planningService.create.mockResolvedValue({ id: 1 });
+
+    await controller.create(req, { date: '2030-01-07', heureDebut: '08:00', heureFin: '11:00', quota: 5, disponible: true } as any);
+    expect(planningService.create).toHaveBeenCalledWith(expect.objectContaining({ medecinId: '10', chuId: 'chu-a' }));
+  });
+
   it('allows an admin to update a planning slot owned by another doctor', async () => {
     const req = { user: { medecinId: 10, role: 'ADMIN' } } as any;
     planningService.findOne.mockResolvedValue({ id: 1, medecinId: 99 });

@@ -13,12 +13,12 @@ model Consultation {
   heure                      String
   patientId                  String
   medecinId                  String
-  statut                     String
+  statut                     StatutConsultation
   urgence                    Boolean                         @default(false)
   termine                    Boolean                         @default(false)
   arriveeAccueil             Boolean                         @default(false)
   arriveeAccueilAt           DateTime?
-  typeVisite                 String                          @default("INITIAL")
+  typeVisite                 TypeVisite                      @default(INITIAL)
   ordreControle              Int?
   consultationParenteId      Int?
   estReport                  Boolean                         @default(false)
@@ -86,7 +86,7 @@ model PrescriptionNonMedicamenteuse {
   examenMotif            String?
   consultation           Consultation           @relation(fields: [consultationId], references: [id])
 
-  @@map("prescription_non_medicamentaire")
+  @@map("prescription_non_medicamenteuse")
 }
 
 model Planning {
@@ -103,11 +103,15 @@ model Planning {
   // reste une ligne independante, modifiable/supprimable sans toucher aux
   // autres (pas de moteur RRULE, juste des lignes pre-generees).
   seriesId   String?
+  // CHU propriétaire du créneau (RG15) : repris du jeton de l'utilisateur qui le crée.
+  // Vide pour les créneaux antérieurs à cette colonne.
+  chuId      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@index([medecinId, date])
   @@index([seriesId])
+  @@index([chuId, date])
   @@map("planning")
 }
 
@@ -145,4 +149,21 @@ enum HospitalisationStatus {
   EN_ATTENTE
   VALIDE
   REFUSE
+}
+
+/// États d'une consultation (dictionnaire des données : statutConsultation).
+enum StatutConsultation {
+  EN_ATTENTE
+  EN_COURS
+  EN_ATTENTE_PARACLINIQUE
+  EN_ATTENTE_CONTROLE
+  HOSPITALISE
+  TERMINE
+  REPORTEE
+}
+
+/// Nature d'une visite (dictionnaire des données : typeVisite).
+enum TypeVisite {
+  INITIAL
+  CONTROLE
 }

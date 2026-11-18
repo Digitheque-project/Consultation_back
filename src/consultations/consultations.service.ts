@@ -574,7 +574,8 @@ export class ConsultationsService {
 
     const isToday = this.dejaArrive(data.date, data.heure);
 
-    const typeVisite = data.typeVisite ?? 'INITIAL';
+    // Le DTO n'accepte que INITIAL ou CONTROLE (énumération TypeVisite du schéma).
+    const typeVisite = data.typeVisite === 'CONTROLE' ? ('CONTROLE' as const) : ('INITIAL' as const);
     const isControle = typeVisite === 'CONTROLE';
 
     const consultation = await this.prisma.consultation.create({
@@ -980,7 +981,7 @@ export class ConsultationsService {
     // Marquer la consultation comme terminée
     await this.prisma.consultation.update({
       where: { id },
-      data: { termine: true, statut: 'TERMINÉ' },
+      data: { termine: true, statut: 'TERMINE' },
     });
 
     return {

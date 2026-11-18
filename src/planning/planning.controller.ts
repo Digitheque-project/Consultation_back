@@ -73,6 +73,7 @@ export class PlanningController {
     const createdPlanning = await this.planningService.create({
       ...createPlanningDto,
       medecinId: requestedMedecinId,
+      chuId: this.getChuId(req) ?? null,
     });
     return createdPlanning;
   }
@@ -98,7 +99,7 @@ export class PlanningController {
       throw new ForbiddenException('Accès refusé à ce planning');
     }
 
-    return this.planningService.createRecurring({ ...dto, medecinId: requestedMedecinId });
+    return this.planningService.createRecurring({ ...dto, medecinId: requestedMedecinId, chuId: this.getChuId(req) });
   }
 
   @Post('unavailability')
@@ -123,7 +124,7 @@ export class PlanningController {
       throw new ForbiddenException('Accès refusé à ce planning');
     }
 
-    return this.planningService.createUnavailability({ ...dto, medecinId: requestedMedecinId });
+    return this.planningService.createUnavailability({ ...dto, medecinId: requestedMedecinId, chuId: this.getChuId(req) });
   }
 
   // Route à segment littéral déclarée avant ":id" — sinon Nest matche
@@ -173,8 +174,12 @@ export class PlanningController {
     // mais un JWT d'agent d'accueil a un medecinId réel (= son propre userId, cf.
     // buildValidatedUser) — il retombait donc à tort sur findByMedecin(userId),
     // qui ne correspond à aucun médecin réel → liste vide.
-    if (!currentUser?.medecinId || currentRole === 'ADMIN' || currentRole === 'SERVICE') {
-      return this.planningService.findAll();
+    if (currentRole === 'ADMIN' || currentRole === 'SERVICE') {
+      return this.planningService.findAll(this.getChuId(req));
+    }
+    // Un jeton sans médecin ni rôle de gestion ne reçoit aucun créneau (et non plus tout le planning).
+    if (!currentUser?.medecinId) {
+      return [];
     }
 
     return this.planningService.findByMedecin(String(currentUser.medecinId));

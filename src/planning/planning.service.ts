@@ -197,8 +197,14 @@ export class PlanningService {
     return this.prisma.planning.create({ data: preparedData });
   }
 
-  async findAll(): Promise<Planning[]> {
+  /**
+   * RG15 : un utilisateur ne voit que les créneaux de son CHU. Les créneaux créés
+   * avant l'ajout de la colonne chuId (valeur vide) restent visibles. Sans CHU
+   * connu (jeton de service interne), aucun filtre n'est appliqué.
+   */
+  async findAll(chuId?: string): Promise<Planning[]> {
     return this.prisma.planning.findMany({
+      ...(chuId ? { where: { OR: [{ chuId }, { chuId: null }] } } : {}),
       orderBy: {
         date: 'asc',
       },
@@ -341,7 +347,7 @@ export class PlanningService {
   // Planning indépendante, taguée du même seriesId. Annuler/modifier une
   // seule occurrence fonctionne alors avec remove()/update() existants,
   // sans aucun changement — seule la génération en masse est nouvelle ici.
-  async createRecurring(dto: CreateRecurringPlanningDto & { medecinId: string }): Promise<{ seriesId: string; slots: Planning[] }> {
+  async createRecurring(dto: CreateRecurringPlanningDto & { medecinId: string; chuId?: string }): Promise<{ seriesId: string; slots: Planning[] }> {
     this.validateTimeRange(dto.heureDebut, dto.heureFin);
     this.validateQuota(dto.quota);
 
@@ -373,6 +379,7 @@ export class PlanningService {
       disponible: dto.disponible,
       notes: dto.notes,
       seriesId,
+      chuId: dto.chuId ?? null,
     }));
 
     await this.prisma.planning.createMany({ data: rows });
@@ -398,7 +405,7 @@ export class PlanningService {
   // journée entière (00:00-23:59) et sans quota. Aucune table dédiée : le
   // calendrier, la vue par service et l'édition par série marchent tels quels.
   async createUnavailability(
-    dto: CreateUnavailabilityDto & { medecinId: string },
+    dto: CreateUnavailabilityDto & { medecinId: string; chuId?: string },
   ): Promise<{ seriesId: string; slots: Planning[]; deletedCount: number }> {
     const start = this.normalizeDate(dto.startDate);
     const end = this.normalizeDate(dto.endDate);
@@ -457,6 +464,7 @@ export class PlanningService {
           disponible: false,
           notes: dto.notes,
           seriesId,
+          chuId: dto.chuId ?? null,
         })),
       });
 
