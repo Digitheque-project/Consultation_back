@@ -81,6 +81,18 @@ export class MedecinsService {
         });
       }
 
+      // Agent retiré de la Consultation externe (ou désactivé) : il quitte les listes
+      // (findAll ne prend que MEDECIN), son nom reste lisible sur les anciens créneaux.
+      // Seulement sur une liste complète (moins que la limite de la page) et non vide.
+      const ids = users.filter((u) => u.email).map((u) => u.id);
+      if (ids.length > 0 && users.length < 200) {
+        const retires = await this.prisma.medecinCache.updateMany({
+          where: { id: { notIn: ids }, role: { not: 'RETIRE' } },
+          data: { role: 'RETIRE' },
+        });
+        if (retires.count) this.logger.log(`${retires.count} médecin(s) retiré(s) de la Consultation externe`);
+      }
+
       this.lastSyncAt = Date.now();
     } catch (err) {
       this.logger.error(`syncFromAuthService: ${err}`);

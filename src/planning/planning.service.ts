@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MedecinsService } from '../medecins/medecins.service';
 import { Planning, Prisma } from '@prisma/client';
 import { CreateRecurringPlanningDto } from './dto/create-recurring-planning.dto';
 import { CreateUnavailabilityDto } from './dto/create-unavailability.dto';
@@ -25,7 +26,10 @@ export class PlanningService {
   // spécifique à consultation-externe) : couvre des services arbitraires du CHU.
   private doctorsCacheByService = new Map<string, { data: ServiceDoctor[]; fetchedAt: number }>();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private medecins: MedecinsService,
+  ) {}
 
   async getServices(chuId?: string, token?: string): Promise<ClinicalService[]> {
     const effectiveChuId = chuId || FALLBACK_CHU_ID;
@@ -73,7 +77,12 @@ export class PlanningService {
       const body = await response.json();
       const users: Array<{ id: string; name: string; firstname?: string; email: string; job?: string }> =
         Array.isArray(body) ? body : (body.users ?? []);
-      const data = users.map((u) => ({ id: u.id, nom: u.name ?? '', prenom: u.firstname ?? '', email: u.email, specialite: u.job ?? null }));
+      // Seuls les médecins qui ont un rôle en Consultation externe ont des créneaux :
+      // les autres agents du service (infirmiers, médecins hors consultation…) n'apparaissent pas.
+      const consultation = new Set((await this.medecins.findAll(token)).map((m) => m.id));
+      const data = users
+        .filter((u) => consultation.has(u.id))
+        .map((u) => ({ id: u.id, nom: u.name ?? '', prenom: u.firstname ?? '', email: u.email, specialite: u.job ?? null }));
       this.doctorsCacheByService.set(serviceId, { data, fetchedAt: Date.now() });
       return data;
     } catch (err) {
