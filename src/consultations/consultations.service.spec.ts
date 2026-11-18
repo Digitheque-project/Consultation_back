@@ -117,7 +117,7 @@ describe('ConsultationsService', () => {
       urgence: false,
     });
 
-    await expect(service.markConsultationArrival(3, { arriveeAccueil: true })).rejects.toThrow(/arrivée se confirme/);
+    await expect(service.markConsultationArrival(3, { arriveeAccueil: true })).rejects.toThrow(/au plus tôt 15 minutes avant/);
   });
 
   it('allows arrival confirmation without a doctor ownership context', async () => {

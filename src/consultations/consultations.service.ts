@@ -39,6 +39,9 @@ type PriseEnCharge = {
   isActive: boolean;
 };
 
+// Un patient peut être enregistré comme arrivé jusqu'à 15 minutes avant son créneau.
+const MARGE_ARRIVEE_MIN = 15;
+
 @Injectable()
 export class ConsultationsService {
   private readonly logger = new Logger(ConsultationsService.name);
@@ -472,7 +475,7 @@ export class ConsultationsService {
     // il n'est « arrivé » qu'une fois son créneau commencé, le jour même.
     if (arriveeAccueil && !consultation.arriveeAccueil && !this.dejaArrive(consultation.date.toISOString(), consultation.heure)) {
       throw new BadRequestException(
-        `Le créneau de ce patient commence à ${consultation.heure} le ${consultation.date.toISOString().slice(0, 10).split('-').reverse().join('/')} : son arrivée se confirme à ce moment-là.`,
+        `Le créneau de ce patient commence à ${consultation.heure} le ${consultation.date.toISOString().slice(0, 10).split('-').reverse().join('/')} : son arrivée se confirme au plus tôt ${MARGE_ARRIVEE_MIN} minutes avant.`,
       );
     }
     const arriveeAccueilAt = data?.arriveeAccueilAt === undefined
@@ -509,9 +512,9 @@ export class ConsultationsService {
     };
   }
 
-  // Arrivée automatique seulement si le créneau a déjà commencé : un rendez-vous
-  // pris pour plus tard dans la journée attend son « Confirmer l'arrivée ». Heure
-  // du CHU (et non du serveur, en UTC).
+  // Arrivée (automatique ou confirmée) seulement le jour même, à partir de
+  // MARGE_ARRIVEE_MIN avant le début du créneau : un patient venu le matin pour
+  // l'après-midi repart puis revient. Heure du CHU (et non du serveur, en UTC).
   private dejaArrive(date: string, heure: string): boolean {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: process.env.CHU_TIMEZONE || 'Indian/Antananarivo',
@@ -524,7 +527,9 @@ export class ConsultationsService {
     }).formatToParts(new Date());
     const v = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
     const aujourdhui = `${v('year')}-${v('month')}-${v('day')}`;
-    return date.slice(0, 10) === aujourdhui && heure <= `${v('hour')}:${v('minute')}`;
+    const [h, m] = heure.split(':').map(Number);
+    const maintenant = Number(v('hour')) * 60 + Number(v('minute'));
+    return date.slice(0, 10) === aujourdhui && h * 60 + m <= maintenant + MARGE_ARRIVEE_MIN;
   }
 
   private async ensureMedecinQuota(medecinId: string, date: Date, heure: string) {
