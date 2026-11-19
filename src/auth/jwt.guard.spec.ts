@@ -32,6 +32,15 @@ describe('JwtGuard', () => {
     expect(req.user).toEqual(expect.objectContaining({ role: 'SERVICE', userId: 'service-accueil', medecinId: null }));
   });
 
+  it('garde le CHU porté par un JWT de service (RG15)', async () => {
+    const guard = new JwtGuard(reflector, authService);
+    const token = jwtService.sign({ userId: 'agent-accueil', role: 'SERVICE', chuId: 'chu-1' }, { expiresIn: '2m' });
+    const { req, context } = contextFor(`Bearer ${token}`);
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(req.user).toEqual(expect.objectContaining({ role: 'SERVICE', chuId: 'chu-1' }));
+  });
+
   it('refuse un JWT de service signé avec un autre secret', async () => {
     const guard = new JwtGuard(reflector, authService);
     const forged = new JwtService({ secret: 'autre-secret' }).sign({ userId: 'x', role: 'SERVICE', exp: Math.floor(Date.now() / 1000) - 10 });

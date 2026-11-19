@@ -162,11 +162,19 @@ export class AuthService {
    * signé avec le JWT_SECRET partagé et portant role=SERVICE. Vérifié
    * localement, jamais mis en cache médecin (ce n'est pas un médecin).
    */
-  validateServiceToken(token: string): { userId: string; medecinId: null; email: string; role: 'SERVICE' } | null {
+  validateServiceToken(token: string): { userId: string; medecinId: null; email: string; role: 'SERVICE'; chuId?: string } | null {
     try {
       const payload = this.jwtService.verify<Record<string, any>>(token);
       if (payload?.role !== SERVICE_ROLE) return null;
-      return { userId: String(payload.userId ?? payload.sub ?? 'service'), medecinId: null, email: 'service@system', role: 'SERVICE' };
+      return {
+        userId: String(payload.userId ?? payload.sub ?? 'service'),
+        medecinId: null,
+        email: 'service@system',
+        role: 'SERVICE',
+        // RG15 : le CHU du jeton (agent d'accueil) suit la requête, pour que ses
+        // créneaux soient enregistrés et lus dans son CHU.
+        ...(payload.chuId ? { chuId: String(payload.chuId) } : {}),
+      };
     } catch {
       return null;
     }
