@@ -80,4 +80,14 @@ describe('ConsultationsService.getParcoursPatient', () => {
     const r = await service.getParcoursPatient('pat1', 'doc1');
     expect(r.parcours.map((p: any) => p.etapes[0].id)).toEqual([5, 1]);
   });
+
+  it("le médecin qui traite le patient en ce moment voit aussi les parcours des autres médecins", async () => {
+    const r = await service.getParcoursPatient('pat1', 'doc1', undefined, undefined, { tousMedecins: true });
+    expect(r.parcours.map((p: any) => p.etapes[0].id)).toEqual([5, 10, 1]);
+  });
+
+  it("sans consultation en cours avec ce patient, la demande élargie reste limitée à ses parcours", async () => {
+    const r = await service.getParcoursPatient('pat1', 'autre', undefined, undefined, { tousMedecins: true });
+    expect(r.parcours.map((p: any) => p.etapes[0].id)).toEqual([10]);
+  });
 });

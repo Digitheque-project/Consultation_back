@@ -195,8 +195,23 @@ export class ConsultationsController {
     summary: "Archive d'un patient : tous ses parcours",
     description: 'Chaque consultation initiale avec ses contrôles, du plus récent au plus ancien',
   })
-  async getParcoursPatient(@Req() req: Request, @Param('patientId') patientId: string) {
-    return this.consultationsService.getParcoursPatient(patientId, this.getEffectiveMedecinId(req), this.getChuId(req), this.getRawToken(req));
+  @ApiQuery({
+    name: 'tousMedecins',
+    required: false,
+    description: "true : aussi les parcours suivis par d'autres médecins, si le médecin traite ce patient en ce moment",
+  })
+  async getParcoursPatient(
+    @Req() req: Request,
+    @Param('patientId') patientId: string,
+    @Query('tousMedecins') tousMedecins?: string,
+  ) {
+    return this.consultationsService.getParcoursPatient(
+      patientId,
+      this.getEffectiveMedecinId(req),
+      this.getChuId(req),
+      this.getRawToken(req),
+      { tousMedecins: tousMedecins === 'true' },
+    );
   }
 
   @Get('patient/:patientId/history')

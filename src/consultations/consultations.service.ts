@@ -762,12 +762,24 @@ export class ConsultationsService {
    * dix fois a une seule archive qui liste ses dix prises en charge.
    * Un médecin ne voit que les parcours auxquels il a participé.
    */
-  async getParcoursPatient(patientId: string, medecinId: string | undefined, chuId?: string, token?: string) {
+  async getParcoursPatient(
+    patientId: string,
+    medecinId: string | undefined,
+    chuId?: string,
+    token?: string,
+    options?: { tousMedecins?: boolean },
+  ) {
     const toutes = await this.prisma.consultation.findMany({
       where: { patientId },
       include: { observation: true, parametresCliniques: true, nonMedicamentPrescriptions: true },
       orderBy: [{ date: 'asc' }, { id: 'asc' }],
     });
+    // Un médecin qui traite ce patient en ce moment (consultation non close)
+    // voit tous ses antécédents, y compris ceux suivis par d'autres médecins.
+    // Sinon, l'archive reste limitée à ses propres patients.
+    const traiteActuellement =
+      !!medecinId && toutes.some((c) => c.medecinId === medecinId && !c.termine);
+    const filtreMedecin = options?.tousMedecins && traiteActuellement ? undefined : medecinId;
     const parId = new Map(toutes.map((c) => [c.id, c]));
     const racineDe = (c: (typeof toutes)[number]) => {
       let r = c;
@@ -792,7 +804,7 @@ export class ConsultationsService {
     const parcours = [...groupes.values()]
       // Archive : seulement les parcours dont au moins une étape est close.
       .filter((etapes) => etapes.some((e) => e.termine))
-      .filter((etapes) => !medecinId || etapes.some((e) => e.medecinId === medecinId))
+      .filter((etapes) => !filtreMedecin || etapes.some((e) => e.medecinId === filtreMedecin))
       .map((etapes) => ({
         debut: etapes[0].date,
         fin: etapes[etapes.length - 1].date,
