@@ -181,6 +181,17 @@ export class ConsultationsService {
     };
   }
 
+  /**
+   * Jour où la consultation a réellement été faite : la date prévue (`date`)
+   * peut être bien antérieure (rendez-vous tenu en retard, reporté…). Trace la
+   * plus fiable : la création de l'observation, écrite à la fin de la
+   * consultation ; à défaut, la dernière mise à jour d'une consultation close.
+   */
+  private dateRealisation(c: { termine: boolean; updatedAt: Date; observation?: { createdAt: Date } | null }) {
+    if (!c.termine) return null;
+    return c.observation?.createdAt ?? c.updatedAt;
+  }
+
   private getControlLabel(ordreControle?: number | null) {
     if (!ordreControle || ordreControle <= 1) {
       return '1er contrôle';
@@ -735,9 +746,11 @@ export class ConsultationsService {
       },
     });
 
-    return consultations.map((consultation) => ({
+    return consultations
+      .map((consultation) => ({
       id: consultation.id,
       date: consultation.date,
+      dateRealisation: this.dateRealisation(consultation),
       heure: consultation.heure,
       statut: consultation.statut,
       typeVisite: consultation.typeVisite,
@@ -750,7 +763,9 @@ export class ConsultationsService {
         examenService: item.examenService,
         hospitalisationService: item.hospitalisationService,
       })),
-    }));
+    }))
+      // Ordre réel des consultations, pas celui des rendez-vous prévus.
+      .sort((a, b) => (a.dateRealisation ?? a.date).getTime() - (b.dateRealisation ?? b.date).getTime());
   }
 
   async getConsultationById(id: number, medecinId: string | undefined, chuId?: string, token?: string) {
@@ -835,6 +850,7 @@ export class ConsultationsService {
           const isControl = e.typeVisite === 'CONTROLE' || e.consultationParenteId !== null;
           return {
             ...e,
+            dateRealisation: this.dateRealisation(e),
             medecinNom: nomMedecin.get(e.medecinId) || null,
             isControl,
             controleLabel: isControl ? this.getControlLabel(e.ordreControle) : null,
@@ -910,6 +926,7 @@ export class ConsultationsService {
         const isControl = e.typeVisite === 'CONTROLE' || e.consultationParenteId !== null;
         return {
           ...e,
+          dateRealisation: this.dateRealisation(e),
           medecinNom: nomMedecin.get(e.medecinId) || null,
           isControl,
           controleLabel: isControl ? this.getControlLabel(e.ordreControle) : null,
