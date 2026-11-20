@@ -198,23 +198,36 @@ export class ConsultationsService {
     }
 
     const nextOrder = (consultation.ordreControle ?? 0) + 1;
-    const followUp = await this.prisma.consultation.create({
-      data: {
-        patientId: consultation.patientId,
-        medecinId: medecinId ?? consultation.medecinId,
-        date: followUpDate,
-        heure: consultation.heure,
-        statut: 'EN_ATTENTE_CONTROLE',
-        termine: false,
-        typeVisite: 'CONTROLE',
-        ordreControle: nextOrder,
-        consultationParenteId: consultation.id,
-        motif: data?.rdvMotif ?? `Contrôle ${this.getControlLabel(nextOrder)}`,
-        urgence: consultation.urgence,
-      },
-    });
+    const donnees = {
+      patientId: consultation.patientId,
+      medecinId: medecinId ?? consultation.medecinId,
+      date: followUpDate,
+      heure: consultation.heure,
+      statut: 'EN_ATTENTE_CONTROLE' as const,
+      termine: false,
+      typeVisite: 'CONTROLE' as const,
+      ordreControle: nextOrder,
+      consultationParenteId: consultation.id,
+      motif: data?.rdvMotif ?? `Contrôle ${this.getControlLabel(nextOrder)}`,
+      urgence: consultation.urgence,
+    };
 
-    return followUp;
+    // Un seul contrôle de suivi par consultation : un second enregistrement
+    // (double clic, nouvel essai) met à jour celui qui attend au lieu d'en
+    // créer un autre.
+    const existant = await this.controleEnAttenteDe(consultation.id);
+    if (existant) {
+      return this.prisma.consultation.update({ where: { id: existant.id }, data: donnees });
+    }
+    return this.prisma.consultation.create({ data: donnees });
+  }
+
+  /** Contrôle déjà programmé à partir de cette consultation et pas encore tenu. */
+  private controleEnAttenteDe(consultationId: number) {
+    return this.prisma.consultation.findFirst({
+      where: { consultationParenteId: consultationId, typeVisite: 'CONTROLE', termine: false },
+      orderBy: { id: 'asc' },
+    });
   }
 
   private async registerNonMedicalAction(consultationId: number, data: any) {
@@ -578,23 +591,32 @@ export class ConsultationsService {
     const typeVisite = data.typeVisite === 'CONTROLE' ? ('CONTROLE' as const) : ('INITIAL' as const);
     const isControle = typeVisite === 'CONTROLE';
 
-    const consultation = await this.prisma.consultation.create({
-      data: {
-        patientId: data.patientId,
-        medecinId: data.medecinId,
-        date: consultationDate,
-        heure: data.heure,
-        motif: data.motif,
-        urgence: data.urgence ?? false,
-        statut: isControle ? 'EN_ATTENTE_CONTROLE' : 'EN_ATTENTE',
-        termine: false,
-        typeVisite,
-        ordreControle: data.ordreControle ?? null,
-        consultationParenteId: data.consultationParenteId ?? null,
-        arriveeAccueil: isToday,
-        arriveeAccueilAt: isToday ? new Date() : null,
-      },
-    });
+    const donnees = {
+      patientId: data.patientId,
+      medecinId: data.medecinId,
+      date: consultationDate,
+      heure: data.heure,
+      motif: data.motif,
+      urgence: data.urgence ?? false,
+      statut: isControle ? ('EN_ATTENTE_CONTROLE' as const) : ('EN_ATTENTE' as const),
+      termine: false,
+      typeVisite,
+      ordreControle: data.ordreControle ?? null,
+      consultationParenteId: data.consultationParenteId ?? null,
+      arriveeAccueil: isToday,
+      arriveeAccueilAt: isToday ? new Date() : null,
+    };
+    // Contrôle demandé par le médecin : la fin de consultation l'a déjà créé à la
+    // date voulue. L'Accueil qui le planifie le reprend (date, heure, médecin)
+    // au lieu d'en créer un second.
+    const existant =
+      isControle && data.consultationParenteId ? await this.controleEnAttenteDe(data.consultationParenteId) : null;
+    const consultation = existant
+      ? await this.prisma.consultation.update({
+          where: { id: existant.id },
+          data: { ...donnees, ordreControle: data.ordreControle ?? existant.ordreControle },
+        })
+      : await this.prisma.consultation.create({ data: donnees });
 
     this.consultationEvents.next({ type: 'new-consultation', consultationId: consultation.id });
     void this.notifyOurService(
@@ -1174,23 +1196,27 @@ export class ConsultationsService {
     }
 
     if (action === 'controle') {
-      const nextOrder = (consultation.ordreControle ?? 0) + 1;
+      const existant = await this.controleEnAttenteDe(id);
+      // Contrôle déjà programmé depuis cette consultation : on le déplace au lieu
+      // d'en créer un second (même ordre, la consultation n'a pas avancé).
+      const nextOrder = existant?.ordreControle ?? (consultation.ordreControle ?? 0) + 1;
       const followUpDate = data?.date ? new Date(data.date) : new Date(consultation.date);
-      const followUp = await this.prisma.consultation.create({
-        data: {
-          patientId: consultation.patientId,
-          medecinId: medecinId ?? consultation.medecinId,
-          date: followUpDate,
-          heure: data?.heure ?? consultation.heure,
-          statut: 'EN_ATTENTE_CONTROLE',
-          termine: false,
-          typeVisite: 'CONTROLE',
-          ordreControle: nextOrder,
-          consultationParenteId: id,
-          motif: data?.motif ?? `Contrôle ${this.getControlLabel(nextOrder)}`,
-          urgence: consultation.urgence,
-        },
-      });
+      const donnees = {
+        patientId: consultation.patientId,
+        medecinId: medecinId ?? consultation.medecinId,
+        date: followUpDate,
+        heure: data?.heure ?? consultation.heure,
+        statut: 'EN_ATTENTE_CONTROLE' as const,
+        termine: false,
+        typeVisite: 'CONTROLE' as const,
+        ordreControle: nextOrder,
+        consultationParenteId: id,
+        motif: data?.motif ?? `Contrôle ${this.getControlLabel(nextOrder)}`,
+        urgence: consultation.urgence,
+      };
+      const followUp = existant
+        ? await this.prisma.consultation.update({ where: { id: existant.id }, data: donnees })
+        : await this.prisma.consultation.create({ data: donnees });
 
       await this.prisma.consultation.update({
         where: { id },
