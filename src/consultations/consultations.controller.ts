@@ -597,7 +597,7 @@ export class ConsultationsController {
   @Post(':id/traiter')
   @ApiOperation({
     summary: 'Traiter une consultation avec l�une des actions m�tier',
-    description: 'Actions disponibles : "ouvrir" (le m�decin commence la consultation, statut ? EN_COURS), "annuler" (le m�decin revient en arri�re sans finaliser, statut ? EN_ATTENTE), "terminer", "controle", "examen", "hospitalisation", "reporter" (le patient �tait arriv� mais n�a pas pu �tre vu ; cr�e une nouvelle consultation prioritaire � une date/m�decin choisis, body: { date, heure?, medecinId? }).',
+    description: 'Actions disponibles : "ouvrir" (le m�decin commence la consultation, statut ? EN_COURS), "annuler" (le m�decin revient en arri�re sans finaliser, statut ? EN_ATTENTE), "terminer", "controle", "hospitalisation", "reporter" (le patient �tait arriv� mais n�a pas pu �tre vu ; cr�e une nouvelle consultation prioritaire � une date/m�decin choisis, body: { date, heure?, medecinId? }).',
   })
   async traiterConsultation(@Req() req: Request, @Param('id') id: string, @Body() data: any) {
     return this.consultationsService.traiterConsultation(+id, data, this.getEffectiveMedecinId(req), this.getRawToken(req), this.getChuId(req));

@@ -4,7 +4,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateConsultationDto } from './dto/create-consultation.dto';
 import { CreateControleExterneDto } from './dto/create-controle-externe.dto';
 import { serviceAuthorization } from '../auth/service-token';
-import { jourDuChu } from '../common/jour-chu';
 
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback
 // codé en dur ici — une URL obsolète silencieuse a déjà causé une perte de données.
@@ -370,24 +369,6 @@ export class ConsultationsService {
       this.logger.warn(`admitOrRequestHospitalisation: clinique-back injoignable (demande) — ${(err as Error).message}`);
     }
     return 'EN_ATTENTE';
-  }
-
-  private async notifyAccueil(payload: any, endpoint: string, token?: string) {
-    const response = await fetch(`${GATEWAY_URL}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const message = await response.text().catch(() => 'Erreur inconnue');
-      throw new BadRequestException(`Échec de l’envoi vers l’accueil: ${message}`);
-    }
-
-    return response.json().catch(() => ({ success: true }));
   }
 
   /**
@@ -1256,39 +1237,6 @@ export class ConsultationsService {
           controleLabel: this.getControlLabel(nextOrder),
           consultationParenteId: id,
         },
-      };
-    }
-
-    if (action === 'examen') {
-      await this.registerNonMedicalAction(id, {
-        notes: data?.notes ?? 'Demande de paraclinique envoyée vers l’accueil',
-        examenService: data?.service ?? data?.examenService ?? 'PARACLINIQUE',
-        examenType: data?.type ?? data?.examenType ?? 'EXAMEN',
-        examenMotif: data?.motif ?? data?.examenMotif ?? 'Examen demandé',
-        examenPriorite: data?.priorite ?? data?.examenPriorite ?? 'NORMALE',
-      });
-
-      await this.notifyAccueil({
-        patientId: consultation.patientId,
-        specialiteId: 1,
-        medecinId: consultation.medecinId,
-        dateDebutSemaine: jourDuChu(),
-        rendezVousPropose: new Date().toISOString(),
-        priorite: 'NORMALE',
-        motif: data?.motif ?? data?.examenMotif ?? 'Examen demandé',
-        createdBy: `consultation-${id}`,
-      }, '/accueil/triage/consultation-externe', token);
-
-      await this.prisma.consultation.update({
-        where: { id },
-        data: { statut: 'EN_ATTENTE_PARACLINIQUE', termine: false },
-      });
-
-      return {
-        success: true,
-        action: 'examen',
-        redirect: 'ACCUEIL',
-        consultation: { id, statut: 'EN_ATTENTE_PARACLINIQUE', termine: false },
       };
     }
 

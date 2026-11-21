@@ -143,41 +143,6 @@ describe('ConsultationsService', () => {
     expect(prisma.consultation.update).toHaveBeenCalled();
   });
 
-  it('forwards exam requests to the accueil microservice', async () => {
-    prisma.consultation.findUnique.mockResolvedValue({
-      id: 1,
-      medecinId: 'c2ded010-e37a-4ec1-bf93-4712393ba231',
-      patientId: 10,
-      date: new Date('2026-06-25T09:00:00.000Z'),
-      heure: '09:00',
-      termine: false,
-      statut: 'INITIAL',
-      urgence: false,
-    });
-
-    prisma.prescriptionNonMedicamenteuse.deleteMany.mockResolvedValue({});
-    prisma.prescriptionNonMedicamenteuse.create.mockResolvedValue({ id: 42 });
-    prisma.consultation.update.mockResolvedValue({ id: 1, statut: 'EN_ATTENTE_PARACLINIQUE', termine: false });
-
-    (global as any).fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: jest.fn().mockResolvedValue({ success: true }),
-    });
-
-    const result = await service.traiterConsultation(
-      1,
-      { action: 'examen', motif: 'Bilan', service: 'Laboratoire' },
-      'c2ded010-e37a-4ec1-bf93-4712393ba231',
-    );
-
-    expect(result.action).toBe('examen');
-    expect((global as any).fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/accueil/triage/consultation-externe'),
-      expect.objectContaining({ method: 'POST' }),
-    );
-  });
-
   it('creates a follow-up control consultation when a control date is planned', async () => {
     prisma.consultation.findUnique.mockResolvedValue({
       id: 1,
