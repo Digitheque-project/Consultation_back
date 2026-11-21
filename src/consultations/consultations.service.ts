@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateConsultationDto } from './dto/create-consultation.dto';
 import { CreateControleExterneDto } from './dto/create-controle-externe.dto';
 import { serviceAuthorization } from '../auth/service-token';
+import { jourDuChu } from '../common/jour-chu';
 
 // Variables validées au démarrage (voir config/assert-env.ts) : jamais de fallback
 // codé en dur ici — une URL obsolète silencieuse a déjà causé une perte de données.
@@ -1271,7 +1272,7 @@ export class ConsultationsService {
         patientId: consultation.patientId,
         specialiteId: 1,
         medecinId: consultation.medecinId,
-        dateDebutSemaine: new Date().toISOString().slice(0, 10),
+        dateDebutSemaine: jourDuChu(),
         rendezVousPropose: new Date().toISOString(),
         priorite: 'NORMALE',
         motif: data?.motif ?? data?.examenMotif ?? 'Examen demandé',
